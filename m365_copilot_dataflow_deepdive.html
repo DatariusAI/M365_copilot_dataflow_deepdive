@@ -1,0 +1,2211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Microsoft 365 Copilot — End-to-End Security Data Flow (Deep Dive)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* =============================================================
+   MICROSOFT FLUENT 2 / M365 OFFICIAL DESIGN TOKENS
+   Sourced from Microsoft brand & Fluent UI specifications
+   ============================================================= */
+:root{
+  /* Microsoft brand colors */
+  --ms-blue:        #0078D4;   /* Microsoft primary blue */
+  --ms-blue-dark:   #106EBE;
+  --ms-blue-darker: #005A9E;
+  --ms-blue-light:  #2B88D8;
+  --ms-blue-lighter:#DEECF9;
+  --ms-blue-tint:   #EFF6FC;
+
+  /* Microsoft 365 product colors */
+  --m365-pink:      #E3008C;   /* Microsoft 365 brand */
+  --copilot-purple: #8661C5;   /* Copilot brand */
+  --copilot-grad-1: #2B73B8;
+  --copilot-grad-2: #8661C5;
+  --copilot-grad-3: #E3008C;
+
+  /* Office product family */
+  --word:        #185ABD;
+  --excel:       #107C41;
+  --ppt:         #C43E1C;
+  --outlook:     #0078D4;
+  --teams:       #6264A7;
+  --onedrive:    #0364B8;
+  --sharepoint:  #036C70;
+
+  /* Semantic / status */
+  --severe:      #A4262C;   /* Microsoft severe red */
+  --warn:        #797673;   /* Microsoft warning */
+  --warn-bg:     #FFF4CE;
+  --success:     #107C10;   /* Microsoft success green */
+  --success-bg:  #DFF6DD;
+  --info-bg:     #DEECF9;
+
+  /* Neutrals (Fluent neutrals) */
+  --grey-2:  #FAF9F8;
+  --grey-10: #F3F2F1;
+  --grey-20: #EDEBE9;
+  --grey-30: #E1DFDD;
+  --grey-40: #D2D0CE;
+  --grey-60: #A19F9D;
+  --grey-90: #605E5C;
+  --grey-130:#323130;
+  --grey-160:#201F1E;
+
+  /* License tier semantic */
+  --e5-strong: #107C10;
+  --e3-strong: #0078D4;
+  --weak:      #D83B01;
+  --na:        #A19F9D;
+
+  --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  background:var(--grey-2);
+  color:var(--grey-160);
+  font-family:var(--font);
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--ms-blue-lighter);color:var(--ms-blue-darker)}
+
+/* ============================================================= 
+   TOP NAV (M365 STYLE)
+   ============================================================= */
+.topnav{
+  background:#FFFFFF;
+  border-bottom:1px solid var(--grey-30);
+  padding:12px 32px;
+  display:flex;align-items:center;gap:16px;
+  position:sticky;top:0;z-index:100;
+  box-shadow:0 1.6px 3.6px rgba(0,0,0,0.05);
+}
+.ms-logo{
+  display:inline-grid;
+  grid-template-columns:repeat(2,11px);
+  grid-template-rows:repeat(2,11px);
+  gap:2px;
+}
+.ms-logo span:nth-child(1){background:#F25022}
+.ms-logo span:nth-child(2){background:#7FBA00}
+.ms-logo span:nth-child(3){background:#00A4EF}
+.ms-logo span:nth-child(4){background:#FFB900}
+.topnav-title{
+  font-weight:600;font-size:15px;color:var(--grey-160);
+  border-left:1px solid var(--grey-30);padding-left:16px;
+}
+.topnav-sub{
+  color:var(--grey-90);font-size:13px;margin-left:4px;
+}
+.topnav-meta{
+  margin-left:auto;display:flex;gap:24px;font-size:12px;color:var(--grey-90);
+}
+
+/* ============================================================= 
+   LAYOUT
+   ============================================================= */
+.wrap{max-width:1320px;margin:0 auto;padding:32px 24px 80px}
+
+/* ============================================================= 
+   HERO
+   ============================================================= */
+.hero{
+  background:#FFFFFF;
+  border:1px solid var(--grey-30);
+  border-radius:8px;
+  padding:48px 48px 40px;
+  margin-bottom:32px;
+  position:relative;
+  overflow:hidden;
+}
+.hero::before{
+  content:"";
+  position:absolute;top:0;left:0;right:0;height:4px;
+  background:linear-gradient(90deg,#2B73B8 0%, #8661C5 50%, #E3008C 100%);
+}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--ms-blue-tint);color:var(--ms-blue-darker);
+  padding:6px 12px;border-radius:4px;
+  font-size:12px;font-weight:600;letter-spacing:.04em;
+  margin-bottom:20px;
+}
+.hero-eyebrow svg{width:14px;height:14px}
+.hero h1{
+  font-size:40px;font-weight:600;letter-spacing:-.02em;line-height:1.15;
+  color:var(--grey-160);margin-bottom:14px;
+}
+.hero h1 span{
+  background:linear-gradient(90deg,#2B73B8,#8661C5,#E3008C);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero-sub{
+  font-size:17px;line-height:1.5;color:var(--grey-90);max-width:880px;
+  margin-bottom:24px;
+}
+.hero-meta{
+  display:flex;flex-wrap:wrap;gap:32px;
+  border-top:1px solid var(--grey-20);padding-top:20px;
+  font-size:13px;color:var(--grey-90);
+}
+.hero-meta strong{color:var(--grey-160);font-weight:600;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+
+/* ============================================================= 
+   LEGEND BAR (sticky)
+   ============================================================= */
+.legend-bar{
+  position:sticky;top:53px;
+  background:#FFFFFF;
+  border:1px solid var(--grey-30);border-radius:8px;
+  padding:14px 20px;margin-bottom:24px;
+  display:flex;align-items:center;gap:24px;flex-wrap:wrap;
+  box-shadow:0 1.6px 3.6px rgba(0,0,0,0.04);
+  z-index:50;
+}
+.legend-bar h4{
+  font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--grey-90);font-weight:600;
+}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--grey-130)}
+.legend-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:3px 8px;border-radius:3px;
+  font-size:11px;font-weight:600;letter-spacing:.02em;
+}
+.lp-e5{background:var(--success-bg);color:var(--e5-strong);border:1px solid #92C353}
+.lp-e3{background:var(--ms-blue-tint);color:var(--e3-strong);border:1px solid #71AFE5}
+.lp-weak{background:#FED9CC;color:var(--weak);border:1px solid #F0A28F}
+.lp-na{background:var(--grey-10);color:var(--grey-90);border:1px solid var(--grey-30)}
+
+/* ============================================================= 
+   THE BIG VISUAL DIAGRAM
+   ============================================================= */
+.diagram-shell{
+  background:#FFFFFF;
+  border:1px solid var(--grey-30);
+  border-radius:8px;
+  margin-bottom:32px;
+  overflow:hidden;
+  box-shadow:0 3.2px 7.2px rgba(0,0,0,0.06);
+}
+.diagram-head{
+  padding:20px 28px;
+  background:linear-gradient(135deg, #FAFAFA 0%, #F3F2F1 100%);
+  border-bottom:1px solid var(--grey-30);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;
+}
+.diagram-head h2{
+  font-size:22px;font-weight:600;color:var(--grey-160);letter-spacing:-.01em;
+}
+.diagram-head h2 svg{width:18px;height:18px;display:inline-block;vertical-align:-3px;margin-right:8px;color:var(--copilot-purple)}
+.diagram-tabs{display:flex;gap:4px;font-size:12px}
+.diagram-tab{
+  padding:6px 12px;border-radius:4px;color:var(--grey-90);
+  background:transparent;border:1px solid var(--grey-30);
+  font-family:var(--font);font-weight:600;cursor:default;
+}
+.diagram-body{
+  padding:24px;background:#FCFCFC;overflow-x:auto;
+  background-image:
+    linear-gradient(rgba(0,120,212,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,120,212,0.03) 1px, transparent 1px);
+  background-size:24px 24px;
+}
+.diagram-body svg{display:block;min-width:1240px;width:100%;height:auto}
+
+/* ============================================================= 
+   SECTION
+   ============================================================= */
+section{margin-bottom:48px;scroll-margin-top:120px}
+.s-num{
+  display:inline-block;
+  font-size:11px;font-weight:600;letter-spacing:.1em;
+  color:var(--ms-blue);text-transform:uppercase;
+  margin-bottom:8px;
+}
+.s-title{
+  font-size:30px;font-weight:600;color:var(--grey-160);
+  letter-spacing:-.015em;line-height:1.2;margin-bottom:12px;
+}
+.s-desc{
+  font-size:15px;color:var(--grey-90);max-width:920px;margin-bottom:24px;
+}
+
+/* ============================================================= 
+   CARDS
+   ============================================================= */
+.card{
+  background:#FFFFFF;
+  border:1px solid var(--grey-30);
+  border-radius:6px;
+  padding:24px;
+  margin-bottom:14px;
+  transition:box-shadow .15s;
+}
+.card:hover{box-shadow:0 3.2px 7.2px rgba(0,0,0,.08)}
+.card-h{
+  display:flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ms-blue);margin-bottom:10px;
+}
+.card-h::before{
+  content:"";width:3px;height:12px;background:var(--ms-blue);border-radius:1px;
+}
+.card h3{font-size:17px;font-weight:600;color:var(--grey-160);margin-bottom:10px;letter-spacing:-.005em}
+.card p{color:var(--grey-90);margin-bottom:8px;font-size:14px}
+.card p:last-child{margin-bottom:0}
+.card ul{padding-left:18px;color:var(--grey-90);font-size:13.5px}
+.card ul li{margin-bottom:6px}
+.card ul li::marker{color:var(--ms-blue)}
+
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:840px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ============================================================= 
+   PILLS
+   ============================================================= */
+.pill{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:3px;
+  font-size:11px;font-weight:600;letter-spacing:.02em;
+  margin:0 3px;vertical-align:middle;
+  font-family:var(--font);
+}
+.p-e5{background:var(--success-bg);color:var(--e5-strong);border:1px solid #92C353}
+.p-e3{background:var(--ms-blue-tint);color:var(--e3-strong);border:1px solid #71AFE5}
+.p-weak{background:#FED9CC;color:var(--weak);border:1px solid #F0A28F}
+.p-na{background:var(--grey-10);color:var(--grey-90);border:1px solid var(--grey-30)}
+.p-tls{background:#F3E5F5;color:#6B1B7B;border:1px solid #BA68C8}
+.p-zt{background:var(--ms-blue-tint);color:var(--ms-blue-darker);border:1px solid #71AFE5}
+.p-encrypt{background:#FFF4CE;color:#8A6914;border:1px solid #FCE100}
+
+/* ============================================================= 
+   STEPS (vertical timeline)
+   ============================================================= */
+.steps{margin:24px 0}
+.step{
+  background:#FFFFFF;border:1px solid var(--grey-30);border-radius:6px;
+  padding:18px 20px;margin-bottom:10px;
+  display:grid;grid-template-columns:64px 1fr;gap:16px;
+  position:relative;
+}
+.step-num{
+  display:flex;align-items:center;justify-content:center;
+  width:48px;height:48px;border-radius:50%;
+  background:var(--ms-blue-tint);color:var(--ms-blue-darker);
+  font-size:17px;font-weight:600;
+  border:2px solid var(--ms-blue-light);
+}
+.step-body h4{
+  font-size:16px;font-weight:600;color:var(--grey-160);
+  margin-bottom:6px;letter-spacing:-.005em;
+}
+.step-body p{color:var(--grey-90);font-size:13.5px;margin-bottom:8px}
+.step-meta{
+  display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+  font-size:12px;color:var(--grey-90);margin-top:8px;
+  padding-top:8px;border-top:1px dashed var(--grey-20);
+}
+.step-meta b{color:var(--grey-160);font-weight:600}
+
+/* ============================================================= 
+   TABLES
+   ============================================================= */
+.tbl-wrap{
+  background:#FFFFFF;border:1px solid var(--grey-30);border-radius:6px;
+  overflow-x:auto;margin:14px 0;
+}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead{background:var(--grey-10)}
+th{
+  padding:12px 16px;text-align:left;
+  font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--grey-90);border-bottom:1px solid var(--grey-30);
+}
+td{
+  padding:12px 16px;text-align:left;
+  border-bottom:1px solid var(--grey-20);vertical-align:top;
+  color:var(--grey-130);
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--ms-blue-tint)}
+td:first-child{font-weight:600;color:var(--grey-160)}
+td code{
+  font-family:'Cascadia Code', 'Consolas', monospace;
+  font-size:12px;background:var(--grey-10);padding:1px 6px;border-radius:3px;color:var(--ms-blue-darker);
+}
+
+/* ============================================================= 
+   CALLOUT (Microsoft Learn style)
+   ============================================================= */
+.callout{
+  border-left:4px solid var(--ms-blue);
+  background:var(--ms-blue-tint);
+  padding:16px 20px;border-radius:0 4px 4px 0;
+  margin:16px 0;font-size:13.5px;color:var(--grey-130);
+}
+.callout-head{
+  font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ms-blue-darker);margin-bottom:6px;display:flex;align-items:center;gap:6px;
+}
+.callout.warn{border-color:#FCE100;background:#FFF8E1}
+.callout.warn .callout-head{color:#8A6914}
+.callout.danger{border-color:var(--severe);background:#FDE7E9}
+.callout.danger .callout-head{color:var(--severe)}
+.callout.success{border-color:var(--success);background:var(--success-bg)}
+.callout.success .callout-head{color:var(--success)}
+
+/* ============================================================= 
+   TOC
+   ============================================================= */
+.toc{
+  background:#FFFFFF;border:1px solid var(--grey-30);border-radius:6px;
+  padding:20px 24px;margin-bottom:32px;
+}
+.toc h3{
+  font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--grey-90);margin-bottom:14px;font-weight:600;
+}
+.toc ol{
+  list-style:none;
+  display:grid;grid-template-columns:repeat(2,1fr);gap:6px 24px;
+  counter-reset:t;
+}
+@media(max-width:760px){.toc ol{grid-template-columns:1fr}}
+.toc ol li{counter-increment:t;font-size:13.5px;padding:6px 0}
+.toc ol li::before{
+  content:counter(t,decimal-leading-zero);
+  display:inline-block;width:24px;
+  font-size:11px;color:var(--ms-blue);font-weight:600;
+}
+.toc ol li a{color:var(--grey-130);text-decoration:none}
+.toc ol li a:hover{color:var(--ms-blue);text-decoration:underline}
+
+/* ============================================================= 
+   SURFACE CARDS (M365 product tiles)
+   ============================================================= */
+.surface-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}
+@media(max-width:840px){.surface-grid{grid-template-columns:1fr}}
+.surface{
+  background:#FFFFFF;border:1px solid var(--grey-30);border-radius:6px;
+  padding:18px;display:flex;flex-direction:column;gap:8px;
+  transition:transform .15s, box-shadow .15s;
+}
+.surface:hover{transform:translateY(-2px);box-shadow:0 6.4px 14.4px rgba(0,0,0,.08)}
+.surface-icon{
+  width:32px;height:32px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;font-size:14px;
+}
+.surface h4{font-size:15px;font-weight:600;color:var(--grey-160);margin-bottom:4px}
+.surface p{font-size:12.5px;color:var(--grey-90);margin-bottom:6px}
+.surface-meta{
+  margin-top:auto;padding-top:8px;border-top:1px solid var(--grey-20);
+  font-size:11px;color:var(--grey-90);
+}
+
+/* footnote chip */
+sup.fn{
+  font-size:10px;font-weight:600;color:var(--ms-blue);
+  background:var(--ms-blue-tint);padding:0 4px;border-radius:2px;
+  margin-left:2px;cursor:default;
+}
+
+/* references */
+.cites{
+  background:#FFFFFF;border:1px solid var(--grey-30);border-radius:6px;
+  padding:24px 28px;margin-top:32px;
+}
+.cites h2{font-size:18px;font-weight:600;margin-bottom:14px;color:var(--grey-160)}
+.cites ol{padding-left:24px;font-size:12.5px;color:var(--grey-130)}
+.cites li{margin-bottom:8px;line-height:1.5}
+.cites a{color:var(--ms-blue);text-decoration:none;word-break:break-all}
+.cites a:hover{text-decoration:underline}
+
+/* footer */
+.foot{
+  text-align:center;color:var(--grey-90);font-size:12px;
+  padding:24px;margin-top:32px;border-top:1px solid var(--grey-30);
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================= TOP NAV ============================================================= -->
+<header class="topnav">
+  <div class="ms-logo"><span></span><span></span><span></span><span></span></div>
+  <div class="topnav-title">Microsoft 365 Copilot</div>
+  <div class="topnav-sub">Security &amp; Data Flow Reference</div>
+  <div class="topnav-meta">
+    <span>Last updated: May 2026</span>
+    <span>v 1.1 · Deep Dive</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============================================================= HERO ============================================================= -->
+<section class="hero">
+  <div class="hero-eyebrow">
+    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l6 3v4c0 4-3 6.5-6 7-3-.5-6-3-6-7V4l6-3z"/></svg>
+    Security Architecture · Reference Document
+  </div>
+  <h1>Microsoft 365 Copilot<br><span>End-to-End Security Data Flow</span></h1>
+  <p class="hero-sub">
+    Every hop, every protocol, every control — across desktop, web, mobile, plugins, agents, and connectors.
+    Annotated end-to-end with E3 vs E5 strength markers, sourced exclusively from
+    Microsoft Learn architecture documentation.
+  </p>
+  <div class="hero-meta">
+    <span><strong>Surfaces</strong> Desktop · Web · Mobile · Teams · Plugins · Agents</span>
+    <span><strong>Boundary</strong> Microsoft 365 Service Boundary · EU Data Boundary</span>
+    <span><strong>Cryptography</strong> TLS 1.2/1.3 · AES-256 · OAuth 2.0 · OIDC</span>
+    <span><strong>Sources</strong> Microsoft Learn · ASD Blueprint · Purview docs</span>
+  </div>
+</section>
+
+<!-- ============================================================= LEGEND BAR (STICKY) ============================================================= -->
+<div class="legend-bar">
+  <h4>Legend</h4>
+  <div class="legend-item"><span class="legend-pill lp-e5">E5 STRONG</span>Full feature, automatic enforcement</div>
+  <div class="legend-item"><span class="legend-pill lp-e3">E3 STRONG</span>Equivalent to E5 for this control</div>
+  <div class="legend-item"><span class="legend-pill lp-weak">WEAK</span>Manual / partial / search-only</div>
+  <div class="legend-item"><span class="legend-pill lp-na">N/A</span>Requires upgrade or add-on</div>
+</div>
+
+<!-- ============================================================= TOC ============================================================= -->
+<nav class="toc">
+  <h3>Document Map</h3>
+  <ol>
+    <li><a href="#diagram">Visual Deep-Dive Data Flow Diagram</a></li>
+    <li><a href="#surfaces">Client Surfaces &amp; Entry Points</a></li>
+    <li><a href="#flow">The 22-Hop End-to-End Flow</a></li>
+    <li><a href="#identity">Identity, Auth &amp; Conditional Access</a></li>
+    <li><a href="#orchestrator">Orchestrator, Grounding &amp; RAG</a></li>
+    <li><a href="#graph">Microsoft Graph &amp; Semantic Index</a></li>
+    <li><a href="#extensibility">Plugins, Agents &amp; Connectors</a></li>
+    <li><a href="#llm">Azure OpenAI &amp; LLM Boundary</a></li>
+    <li><a href="#purview">Purview, DLP, Labels &amp; DSPM for AI</a></li>
+    <li><a href="#crypto">Encryption, Protocols &amp; EU Data Boundary</a></li>
+    <li><a href="#e3e5">E3 vs E5 Capability Matrix</a></li>
+    <li><a href="#threats">Threats, Mitigations &amp; Hardening</a></li>
+    <li><a href="#refs">References (Microsoft Learn)</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================= 
+     ████████  THE BIG DEEP-DIVE DIAGRAM  ████████
+     ============================================================= -->
+<section id="diagram">
+  <span class="s-num">§01 / Visual</span>
+  <h2 class="s-title">Deep-Dive Data Flow Diagram</h2>
+  <p class="s-desc">
+    Single-pane schematic of the complete Microsoft 365 Copilot pipeline. Solid arrows = encrypted
+    prompt &amp; response; dashed = identity / policy signals; dotted = audit telemetry. Every
+    component carries its E3 / E5 strength marker.
+  </p>
+
+  <div class="diagram-shell">
+    <div class="diagram-head">
+      <h2>
+        <svg viewBox="0 0 18 18" fill="currentColor"><path d="M9 1.5L1.5 5v5C1.5 13 5 16.5 9 17c4-.5 7.5-4 7.5-7V5L9 1.5zm0 2.2L14.5 6v4c0 2.4-2.4 4.7-5.5 5.3-3.1-.6-5.5-2.9-5.5-5.3V6L9 3.7z"/></svg>
+        Copilot End-to-End Data Flow — Annotated Architecture
+      </h2>
+      <div class="diagram-tabs">
+        <span class="diagram-tab" style="background:var(--ms-blue-tint);color:var(--ms-blue-darker);border-color:var(--ms-blue-light)">Architecture</span>
+        <span class="diagram-tab">Trust Boundaries</span>
+        <span class="diagram-tab">Controls Mapped</span>
+      </div>
+    </div>
+    <div class="diagram-body">
+<svg viewBox="0 0 1440 1480" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif">
+  <defs>
+    <!-- gradients -->
+    <linearGradient id="copilotGrad" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#2B73B8"/>
+      <stop offset="0.5" stop-color="#8661C5"/>
+      <stop offset="1" stop-color="#E3008C"/>
+    </linearGradient>
+    <linearGradient id="boundaryGrad" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#0078D4" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#8661C5" stop-opacity=".04"/>
+    </linearGradient>
+    <linearGradient id="aoaiGrad" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#8661C5" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#8661C5" stop-opacity=".05"/>
+    </linearGradient>
+    <linearGradient id="purviewGrad" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#107C10" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#107C10" stop-opacity=".02"/>
+    </linearGradient>
+
+    <!-- Microsoft logo -->
+    <g id="msLogo">
+      <rect x="0" y="0" width="6" height="6" fill="#F25022"/>
+      <rect x="7" y="0" width="6" height="6" fill="#7FBA00"/>
+      <rect x="0" y="7" width="6" height="6" fill="#00A4EF"/>
+      <rect x="7" y="7" width="6" height="6" fill="#FFB900"/>
+    </g>
+
+    <!-- arrow markers -->
+    <marker id="m-prompt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0078D4"/>
+    </marker>
+    <marker id="m-llm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8661C5"/>
+    </marker>
+    <marker id="m-resp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#E3008C"/>
+    </marker>
+    <marker id="m-audit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#107C10"/>
+    </marker>
+    <marker id="m-policy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#605E5C"/>
+    </marker>
+
+    <!-- shadow -->
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feFlood flood-color="#000000" flood-opacity=".08"/>
+      <feComposite in2="off" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- E3/E5 mini-pill -->
+    <symbol id="pill-e3" viewBox="0 0 30 14">
+      <rect x="0" y="0" width="30" height="14" rx="2" fill="#EFF6FC" stroke="#71AFE5"/>
+      <text x="15" y="10" text-anchor="middle" font-size="9" font-weight="700" fill="#0078D4">E3</text>
+    </symbol>
+    <symbol id="pill-e5" viewBox="0 0 30 14">
+      <rect x="0" y="0" width="30" height="14" rx="2" fill="#DFF6DD" stroke="#92C353"/>
+      <text x="15" y="10" text-anchor="middle" font-size="9" font-weight="700" fill="#107C10">E5</text>
+    </symbol>
+    <symbol id="pill-weak" viewBox="0 0 30 14">
+      <rect x="0" y="0" width="30" height="14" rx="2" fill="#FED9CC" stroke="#F0A28F"/>
+      <text x="15" y="10" text-anchor="middle" font-size="9" font-weight="700" fill="#D83B01">!</text>
+    </symbol>
+    <symbol id="pill-na" viewBox="0 0 30 14">
+      <rect x="0" y="0" width="30" height="14" rx="2" fill="#F3F2F1" stroke="#A19F9D" stroke-dasharray="2 1"/>
+      <text x="15" y="10" text-anchor="middle" font-size="8" font-weight="700" fill="#605E5C">N/A</text>
+    </symbol>
+  </defs>
+
+  <!-- ===================================== TITLE ROW ===================================== -->
+  <text x="720" y="28" text-anchor="middle" fill="#201F1E" font-size="16" font-weight="700">
+    Microsoft 365 Copilot — End-to-End Security Data Flow
+  </text>
+  <text x="720" y="46" text-anchor="middle" fill="#605E5C" font-size="11">
+    USER PROMPT  →  IDENTITY  →  ORCHESTRATOR  →  GROUNDING  →  AZURE OPENAI  →  RESPONSE  →  AUDIT
+  </text>
+
+  <!-- ===================================== ZONE LABELS (top) ===================================== -->
+  <g font-size="10" font-weight="700" letter-spacing="2">
+    <rect x="20"   y="64" width="280" height="22" fill="#EDEBE9" rx="2"/>
+    <text x="160"  y="79" text-anchor="middle" fill="#323130">▎ ZONE A · CLIENT DEVICE (USER ENDPOINT)</text>
+    <rect x="312"  y="64" width="800" height="22" fill="#DEECF9" rx="2"/>
+    <text x="712"  y="79" text-anchor="middle" fill="#005A9E">▎ ZONE B · MICROSOFT 365 SERVICE BOUNDARY (TENANT)</text>
+    <rect x="1124" y="64" width="296" height="22" fill="#FFF4CE" rx="2"/>
+    <text x="1272" y="79" text-anchor="middle" fill="#8A6914">▎ ZONE C · EXTERNAL (BEYOND BOUNDARY)</text>
+  </g>
+
+  <!-- ===================================== SERVICE BOUNDARY OUTLINE ===================================== -->
+  <rect x="312" y="92" width="800" height="1180" rx="10" fill="url(#boundaryGrad)" stroke="#0078D4" stroke-width="1.5" stroke-dasharray="6 4"/>
+
+  <!-- ===================================== ROW 1: CLIENT SURFACES ===================================== -->
+  <text x="160" y="110" text-anchor="middle" fill="#605E5C" font-size="10" font-weight="700" letter-spacing="1">USER SURFACES</text>
+
+  <!-- Surface tiles -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="120" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#185ABD" stroke-width="1.5"/>
+    <rect x="30" y="120" width="4" height="60" fill="#185ABD"/>
+    <text x="46" y="138" font-size="10" font-weight="700" fill="#185ABD">Word</text>
+    <text x="46" y="152" font-size="9" fill="#605E5C">Desktop pane</text>
+    <text x="46" y="164" font-size="8" fill="#A19F9D">Active doc context</text>
+    <text x="46" y="174" font-size="8" fill="#0078D4">TLS 1.3</text>
+
+    <rect x="165" y="120" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#107C41" stroke-width="1.5"/>
+    <rect x="165" y="120" width="4" height="60" fill="#107C41"/>
+    <text x="181" y="138" font-size="10" font-weight="700" fill="#107C41">Excel</text>
+    <text x="181" y="152" font-size="9" fill="#605E5C">Formula assist</text>
+    <text x="181" y="164" font-size="8" fill="#A19F9D">Sheet data inline</text>
+    <text x="181" y="174" font-size="8" fill="#0078D4">TLS 1.3</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="30" y="190" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#C43E1C" stroke-width="1.5"/>
+    <rect x="30" y="190" width="4" height="60" fill="#C43E1C"/>
+    <text x="46" y="208" font-size="10" font-weight="700" fill="#C43E1C">PowerPoint</text>
+    <text x="46" y="222" font-size="9" fill="#605E5C">Slide co-author</text>
+    <text x="46" y="234" font-size="8" fill="#A19F9D">Theme-aware</text>
+    <text x="46" y="244" font-size="8" fill="#0078D4">TLS 1.3</text>
+
+    <rect x="165" y="190" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+    <rect x="165" y="190" width="4" height="60" fill="#0078D4"/>
+    <text x="181" y="208" font-size="10" font-weight="700" fill="#0078D4">Outlook</text>
+    <text x="181" y="222" font-size="9" fill="#605E5C">Summarize / Draft</text>
+    <text x="181" y="234" font-size="8" fill="#A19F9D">Mailbox via Graph</text>
+    <text x="181" y="244" font-size="8" fill="#0078D4">TLS 1.3</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="30" y="260" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#6264A7" stroke-width="1.5"/>
+    <rect x="30" y="260" width="4" height="60" fill="#6264A7"/>
+    <text x="46" y="278" font-size="10" font-weight="700" fill="#6264A7">Teams</text>
+    <text x="46" y="292" font-size="9" fill="#605E5C">Meeting recap · Chat</text>
+    <text x="46" y="304" font-size="8" fill="#A19F9D">Pinned BizChat</text>
+    <text x="46" y="314" font-size="8" fill="#0078D4">TLS 1.3 · Intune</text>
+
+    <rect x="165" y="260" width="125" height="60" rx="4" fill="#FFFFFF" stroke="#8661C5" stroke-width="1.5"/>
+    <rect x="165" y="260" width="4" height="60" fill="#8661C5"/>
+    <text x="181" y="278" font-size="10" font-weight="700" fill="#8661C5">M365 BizChat</text>
+    <text x="181" y="292" font-size="9" fill="#605E5C">m365.cloud / web</text>
+    <text x="181" y="304" font-size="8" fill="#A19F9D">Standalone full chat</text>
+    <text x="181" y="314" font-size="8" fill="#0078D4">TLS 1.3</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="30" y="330" width="260" height="60" rx="4" fill="#FFFFFF" stroke="#605E5C" stroke-width="1.5"/>
+    <rect x="30" y="330" width="4" height="60" fill="#605E5C"/>
+    <text x="46" y="348" font-size="10" font-weight="700" fill="#323130">Mobile (iOS / Android M365 app)</text>
+    <text x="46" y="362" font-size="9" fill="#605E5C">App-protected container · Intune MAM</text>
+    <text x="46" y="374" font-size="8" fill="#A19F9D">No persistence to device file system if MAM enforced</text>
+    <text x="46" y="384" font-size="8" fill="#0078D4">TLS 1.2/1.3</text>
+  </g>
+
+  <!-- Device controls block -->
+  <g filter="url(#shadow)">
+    <rect x="30" y="400" width="260" height="100" rx="4" fill="#FAF9F8" stroke="#A19F9D"/>
+    <text x="160" y="418" font-size="10" font-weight="700" fill="#605E5C" text-anchor="middle" letter-spacing="1">DEVICE-LEVEL CONTROLS</text>
+    <line x1="40" y1="424" x2="280" y2="424" stroke="#E1DFDD"/>
+
+    <text x="46" y="442" font-size="10" fill="#323130" font-weight="600">Intune Compliance Policy</text>
+    <use href="#pill-e3" x="200" y="432" width="32" height="14"/>
+    <use href="#pill-e5" x="236" y="432" width="32" height="14"/>
+
+    <text x="46" y="462" font-size="10" fill="#323130" font-weight="600">App Protection (MAM)</text>
+    <use href="#pill-e3" x="200" y="452" width="32" height="14"/>
+    <use href="#pill-e5" x="236" y="452" width="32" height="14"/>
+
+    <text x="46" y="482" font-size="10" fill="#323130" font-weight="600">Endpoint DLP</text>
+    <use href="#pill-na" x="200" y="472" width="32" height="14"/>
+    <use href="#pill-e5" x="236" y="472" width="32" height="14"/>
+  </g>
+
+  <!-- ===================================== ROW 2: TRANSPORT ===================================== -->
+  <g>
+    <rect x="30" y="510" width="260" height="50" rx="4" fill="#F3E5F5" stroke="#8661C5" stroke-dasharray="3 2"/>
+    <text x="160" y="528" font-size="10" text-anchor="middle" fill="#6B1B7B" font-weight="700" letter-spacing="1">TRANSPORT LAYER</text>
+    <text x="160" y="544" font-size="11" text-anchor="middle" fill="#323130" font-weight="600">TLS 1.2 / 1.3 · Perfect Forward Secrecy · MGN routing</text>
+    <text x="160" y="556" font-size="9" text-anchor="middle" fill="#605E5C">150+ peering points · cert pinning · OAuth 2.0 bearer</text>
+  </g>
+
+  <!-- ===================================== ROW 3: IDENTITY GATE ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="332" y="120" width="220" height="180" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="2"/>
+    <rect x="332" y="120" width="220" height="32" fill="#0078D4"/>
+    <text x="442" y="140" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ IDENTITY GATE</text>
+
+    <text x="442" y="166" text-anchor="middle" fill="#201F1E" font-size="13" font-weight="700">Microsoft Entra ID</text>
+    <text x="442" y="180" text-anchor="middle" fill="#605E5C" font-size="10">OAuth 2.0 + OpenID Connect</text>
+    <line x1="346" y1="186" x2="538" y2="186" stroke="#E1DFDD"/>
+
+    <text x="346" y="202" font-size="10" fill="#323130">▸ MFA enforcement</text>
+    <text x="346" y="216" font-size="10" fill="#323130">▸ Conditional Access</text>
+    <text x="346" y="230" font-size="10" fill="#323130">▸ Device PRT binding</text>
+    <text x="346" y="244" font-size="10" fill="#323130">▸ Phishing-resistant FIDO2</text>
+    <text x="346" y="258" font-size="10" fill="#323130">▸ "Protect AI" CA template</text>
+    <line x1="346" y1="266" x2="538" y2="266" stroke="#E1DFDD"/>
+
+    <use href="#pill-e3" x="346" y="274" width="32" height="14"/>
+    <text x="384" y="285" font-size="10" fill="#605E5C">CA + MFA</text>
+
+    <use href="#pill-e5" x="442" y="274" width="32" height="14"/>
+    <text x="480" y="285" font-size="10" fill="#605E5C">+ Risk-based</text>
+  </g>
+
+  <!-- Zero Trust badge -->
+  <g>
+    <rect x="332" y="310" width="220" height="40" rx="4" fill="#EFF6FC" stroke="#0078D4" stroke-dasharray="3 2"/>
+    <text x="442" y="326" text-anchor="middle" fill="#005A9E" font-size="10" font-weight="700" letter-spacing="1">ZERO TRUST CHECKPOINT</text>
+    <text x="442" y="342" text-anchor="middle" fill="#605E5C" font-size="9">Verify explicitly · Least privilege · Assume breach</text>
+  </g>
+
+  <!-- ===================================== ROW 4: ORCHESTRATOR (CENTER) ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="572" y="120" width="280" height="230" rx="6" fill="#FFFFFF" stroke="#8661C5" stroke-width="2"/>
+    <rect x="572" y="120" width="280" height="34" fill="url(#copilotGrad)"/>
+    <use href="#msLogo" x="582" y="130" width="14" height="14"/>
+    <text x="712" y="140" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ COPILOT ORCHESTRATOR</text>
+    <text x="712" y="152" text-anchor="middle" fill="#FFFFFF" font-size="9" opacity=".9">Brain of the system · Not an AI</text>
+
+    <text x="712" y="172" text-anchor="middle" fill="#201F1E" font-size="11" font-weight="700">Retrieval-Augmented Generation</text>
+    <line x1="586" y1="180" x2="838" y2="180" stroke="#E1DFDD"/>
+
+    <text x="586" y="196" font-size="10" fill="#323130" font-weight="600">▸ Skill router · plans tool calls</text>
+    <text x="586" y="212" font-size="10" fill="#323130" font-weight="600">▸ System metaprompt injection</text>
+    <text x="586" y="228" font-size="10" fill="#323130" font-weight="600">▸ Hybrid retrieval (KW + vector)</text>
+    <text x="586" y="244" font-size="10" fill="#323130" font-weight="600">▸ Plugin / agent dispatch</text>
+    <text x="586" y="260" font-size="10" fill="#323130" font-weight="600">▸ Conversation context store</text>
+
+    <line x1="586" y1="268" x2="838" y2="268" stroke="#E1DFDD"/>
+    <text x="586" y="284" font-size="10" fill="#A4262C" font-weight="700">⚠ Prompt Shields (input)</text>
+    <text x="586" y="298" font-size="10" fill="#A4262C" font-weight="700">⚠ Azure AI Content Safety</text>
+    <text x="586" y="312" font-size="10" fill="#A4262C" font-weight="700">⚠ RAI groundedness check</text>
+
+    <line x1="586" y1="320" x2="838" y2="320" stroke="#E1DFDD"/>
+    <use href="#pill-e3" x="586" y="328" width="32" height="14"/>
+    <use href="#pill-e5" x="622" y="328" width="32" height="14"/>
+    <text x="660" y="339" font-size="10" fill="#605E5C">RAI built-in</text>
+  </g>
+
+  <!-- ===================================== ROW 5: AZURE OPENAI ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="872" y="120" width="240" height="230" rx="6" fill="url(#aoaiGrad)" stroke="#8661C5" stroke-width="2"/>
+    <rect x="872" y="120" width="240" height="34" fill="#8661C5"/>
+    <text x="992" y="140" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ AZURE OPENAI (M365)</text>
+    <text x="992" y="152" text-anchor="middle" fill="#FFFFFF" font-size="9" opacity=".9">Dedicated instance · in-boundary</text>
+
+    <text x="992" y="172" text-anchor="middle" fill="#201F1E" font-size="11" font-weight="700">LLM Inference</text>
+    <line x1="886" y1="180" x2="1098" y2="180" stroke="#E1DFDD"/>
+
+    <text x="886" y="198" font-size="10" fill="#323130" font-weight="600">Default: GPT-4 family</text>
+    <text x="886" y="212" font-size="9" fill="#605E5C">o-series · 4o · 4-Turbo</text>
+
+    <text x="886" y="232" font-size="10" fill="#323130" font-weight="600">Optional: Anthropic Claude</text>
+    <text x="886" y="246" font-size="9" fill="#605E5C">For Cowork &amp; Studio agents</text>
+    <text x="886" y="258" font-size="9" fill="#605E5C">Anthropic = MS subprocessor</text>
+
+    <line x1="886" y1="266" x2="1098" y2="266" stroke="#E1DFDD"/>
+    <text x="886" y="282" font-size="10" fill="#107C10" font-weight="700">✓ No customer-data training</text>
+    <text x="886" y="296" font-size="10" fill="#107C10" font-weight="700">✓ No prompt/response retain</text>
+    <text x="886" y="310" font-size="10" fill="#107C10" font-weight="700">✓ EU Data Boundary applies</text>
+
+    <line x1="886" y1="318" x2="1098" y2="318" stroke="#E1DFDD"/>
+    <use href="#pill-e3" x="886" y="328" width="32" height="14"/>
+    <use href="#pill-e5" x="922" y="328" width="32" height="14"/>
+    <text x="960" y="339" font-size="10" fill="#605E5C">EDP contract</text>
+  </g>
+
+  <!-- ===================================== ROW 6: GROUNDING - GRAPH + SEMANTIC INDEX ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="332" y="370" width="780" height="180" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+    <rect x="332" y="370" width="780" height="32" fill="#0078D4"/>
+    <text x="722" y="390" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ GROUNDING LAYER · MICROSOFT GRAPH + SEMANTIC INDEX</text>
+
+    <!-- Graph index -->
+    <g>
+      <rect x="346" y="414" width="180" height="124" rx="4" fill="#FAF9F8" stroke="#0078D4"/>
+      <text x="436" y="432" text-anchor="middle" fill="#005A9E" font-size="11" font-weight="700">Microsoft Graph</text>
+      <text x="436" y="446" text-anchor="middle" fill="#605E5C" font-size="9">Identity-bound search index</text>
+      <line x1="356" y1="454" x2="516" y2="454" stroke="#E1DFDD"/>
+      <text x="356" y="470" font-size="9" fill="#323130">▸ SharePoint · OneDrive</text>
+      <text x="356" y="482" font-size="9" fill="#323130">▸ Exchange · Teams · Loop</text>
+      <text x="356" y="494" font-size="9" fill="#323130">▸ Planner · Engage · Lists</text>
+      <text x="356" y="506" font-size="9" fill="#323130">▸ Hybrid: keyword + vector</text>
+      <text x="436" y="524" text-anchor="middle" fill="#A4262C" font-size="9" font-weight="700">⚠ ACL gate — query as user</text>
+    </g>
+
+    <!-- Semantic Index -->
+    <g>
+      <rect x="540" y="414" width="180" height="124" rx="4" fill="#FAF9F8" stroke="#8661C5"/>
+      <text x="630" y="432" text-anchor="middle" fill="#6B1B7B" font-size="11" font-weight="700">Semantic Index</text>
+      <text x="630" y="446" text-anchor="middle" fill="#605E5C" font-size="9">Per-user vector embeddings</text>
+      <line x1="550" y1="454" x2="710" y2="454" stroke="#E1DFDD"/>
+      <text x="550" y="470" font-size="9" fill="#323130">▸ Vectorized tenant content</text>
+      <text x="550" y="482" font-size="9" fill="#323130">▸ Conceptual similarity</text>
+      <text x="550" y="494" font-size="9" fill="#323130">▸ Honors permissions</text>
+      <text x="550" y="506" font-size="9" fill="#323130">▸ Tenant-resident</text>
+      <text x="630" y="524" text-anchor="middle" fill="#107C10" font-size="9" font-weight="700">✓ Never used to train LLM</text>
+    </g>
+
+    <!-- Sensitivity labels -->
+    <g>
+      <rect x="734" y="414" width="180" height="124" rx="4" fill="#FAF9F8" stroke="#107C10"/>
+      <text x="824" y="432" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">Sensitivity Labels</text>
+      <text x="824" y="446" text-anchor="middle" fill="#605E5C" font-size="9">Purview + Azure RMS</text>
+      <line x1="744" y1="454" x2="904" y2="454" stroke="#E1DFDD"/>
+      <text x="744" y="470" font-size="9" fill="#323130">▸ Confidential / Restricted</text>
+      <text x="744" y="482" font-size="9" fill="#323130">▸ EXTRACT + VIEW rights</text>
+      <text x="744" y="494" font-size="9" fill="#323130">▸ Encryption enforcement</text>
+      <text x="744" y="506" font-size="9" fill="#323130">▸ Inheritance on output</text>
+      <use href="#pill-weak" x="752" y="516" width="32" height="14"/>
+      <text x="790" y="527" font-size="9" fill="#605E5C">E3 manual</text>
+      <use href="#pill-e5" x="852" y="516" width="32" height="14"/>
+      <text x="884" y="527" font-size="9" fill="#605E5C" text-anchor="end">auto</text>
+    </g>
+
+    <!-- SAM (SharePoint Advanced Management) -->
+    <g>
+      <rect x="928" y="414" width="170" height="124" rx="4" fill="#FAF9F8" stroke="#036C70"/>
+      <text x="1013" y="432" text-anchor="middle" fill="#036C70" font-size="11" font-weight="700">SharePoint Adv Mgmt</text>
+      <text x="1013" y="446" text-anchor="middle" fill="#605E5C" font-size="9">Oversharing controls</text>
+      <line x1="938" y1="454" x2="1088" y2="454" stroke="#E1DFDD"/>
+      <text x="938" y="470" font-size="9" fill="#323130">▸ Restricted SP Search</text>
+      <text x="938" y="482" font-size="9" fill="#323130">▸ Restricted Access Ctrl</text>
+      <text x="938" y="494" font-size="9" fill="#323130">▸ Restricted Discoverability</text>
+      <text x="938" y="506" font-size="9" fill="#323130">▸ Data Access Gov reports</text>
+      <use href="#pill-e3" x="956" y="516" width="32" height="14"/>
+      <use href="#pill-e5" x="992" y="516" width="32" height="14"/>
+      <text x="1085" y="527" font-size="9" fill="#107C10" text-anchor="end" font-weight="600">bundled</text>
+    </g>
+  </g>
+
+  <!-- ===================================== ROW 7: EXTENSIBILITY (right of grounding) ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="332" y="570" width="780" height="180" rx="6" fill="#FFFFFF" stroke="#E3008C" stroke-width="1.5" stroke-dasharray="5 3"/>
+    <rect x="332" y="570" width="780" height="32" fill="#E3008C"/>
+    <text x="722" y="590" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ EXTENSIBILITY · PLUGINS · AGENTS · CONNECTORS  (highest-risk surface)</text>
+
+    <!-- Synced connector -->
+    <g>
+      <rect x="346" y="614" width="180" height="124" rx="4" fill="#FFFFFF" stroke="#0364B8"/>
+      <text x="436" y="632" text-anchor="middle" fill="#0364B8" font-size="11" font-weight="700">Synced Connectors</text>
+      <text x="436" y="646" text-anchor="middle" fill="#605E5C" font-size="9">read-only · indexed</text>
+      <line x1="356" y1="654" x2="516" y2="654" stroke="#E1DFDD"/>
+      <text x="356" y="670" font-size="9" fill="#323130">▸ Box · Confluence · Jira</text>
+      <text x="356" y="682" font-size="9" fill="#323130">▸ Salesforce · ServiceNow</text>
+      <text x="356" y="694" font-size="9" fill="#323130">▸ SAP · file shares · SQL</text>
+      <text x="356" y="706" font-size="9" fill="#323130">▸ ACL preserved in Graph</text>
+      <text x="436" y="724" text-anchor="middle" fill="#107C10" font-size="9" font-weight="700">✓ Data does not exit boundary</text>
+    </g>
+
+    <!-- Federated connector -->
+    <g>
+      <rect x="540" y="614" width="180" height="124" rx="4" fill="#FFFFFF" stroke="#8661C5"/>
+      <text x="630" y="632" text-anchor="middle" fill="#6B1B7B" font-size="11" font-weight="700">Federated (MCP)</text>
+      <text x="630" y="646" text-anchor="middle" fill="#605E5C" font-size="9">real-time · preview</text>
+      <line x1="550" y1="654" x2="710" y2="654" stroke="#E1DFDD"/>
+      <text x="550" y="670" font-size="9" fill="#323130">▸ Model Context Protocol</text>
+      <text x="550" y="682" font-size="9" fill="#323130">▸ OAuth 2.0 per source</text>
+      <text x="550" y="694" font-size="9" fill="#323130">▸ No sync to Graph</text>
+      <text x="550" y="706" font-size="9" fill="#323130">▸ Source ACLs honored</text>
+      <text x="630" y="724" text-anchor="middle" fill="#A4262C" font-size="9" font-weight="700">⚠ Query crosses boundary</text>
+    </g>
+
+    <!-- API Plugins -->
+    <g>
+      <rect x="734" y="614" width="180" height="124" rx="4" fill="#FFFFFF" stroke="#E3008C"/>
+      <text x="824" y="632" text-anchor="middle" fill="#E3008C" font-size="11" font-weight="700">Plugins / API plugins</text>
+      <text x="824" y="646" text-anchor="middle" fill="#605E5C" font-size="9">read &amp; write</text>
+      <line x1="744" y1="654" x2="904" y2="654" stroke="#E1DFDD"/>
+      <text x="744" y="670" font-size="9" fill="#323130">▸ OAuth 2.0, user-consent</text>
+      <text x="744" y="682" font-size="9" fill="#323130">▸ Two-way data flow</text>
+      <text x="744" y="694" font-size="9" fill="#323130">▸ App Governance vital</text>
+      <text x="744" y="706" font-size="9" fill="#323130">▸ Real-time at prompt</text>
+      <text x="824" y="724" text-anchor="middle" fill="#A4262C" font-size="9" font-weight="700">⚠ Highest exfil risk</text>
+    </g>
+
+    <!-- Declarative agents / Studio -->
+    <g>
+      <rect x="928" y="614" width="170" height="124" rx="4" fill="#FFFFFF" stroke="#605E5C"/>
+      <text x="1013" y="632" text-anchor="middle" fill="#323130" font-size="11" font-weight="700">Agents (Studio)</text>
+      <text x="1013" y="646" text-anchor="middle" fill="#605E5C" font-size="9">Copilot Studio · Custom</text>
+      <line x1="938" y1="654" x2="1088" y2="654" stroke="#E1DFDD"/>
+      <text x="938" y="670" font-size="9" fill="#323130">▸ Declarative (no-code)</text>
+      <text x="938" y="682" font-size="9" fill="#323130">▸ Custom (Semantic Kernel)</text>
+      <text x="938" y="694" font-size="9" fill="#323130">▸ Tool-using; agent-to-agent</text>
+      <text x="938" y="706" font-size="9" fill="#323130">▸ Inherits user identity</text>
+      <use href="#pill-weak" x="956" y="716" width="32" height="14"/>
+      <text x="996" y="727" font-size="9" fill="#605E5C">E3 weak gov</text>
+    </g>
+  </g>
+
+  <!-- ===================================== ROW 8: PURVIEW + DSPM AUDIT LAYER ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="332" y="770" width="780" height="280" rx="6" fill="url(#purviewGrad)" stroke="#107C10" stroke-width="1.5"/>
+    <rect x="332" y="770" width="780" height="32" fill="#107C10"/>
+    <text x="722" y="790" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ MICROSOFT PURVIEW · GOVERNANCE · COMPLIANCE · AUDIT LAYER</text>
+
+    <!-- Row 1 of Purview -->
+    <g>
+      <rect x="346" y="814" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="436" y="832" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">DLP</text>
+      <text x="436" y="846" text-anchor="middle" fill="#605E5C" font-size="9">Data Loss Prevention</text>
+      <line x1="356" y1="854" x2="516" y2="854" stroke="#E1DFDD"/>
+      <text x="356" y="870" font-size="9" fill="#323130">▸ Policy-driven blocking</text>
+      <text x="356" y="882" font-size="9" fill="#323130">▸ Inspect prompts &amp; output</text>
+      <use href="#pill-weak" x="356" y="892" width="32" height="14"/>
+      <text x="394" y="903" font-size="9" fill="#605E5C">SP/Exch/OD</text>
+      <use href="#pill-e5" x="464" y="892" width="32" height="14"/>
+      <text x="514" y="903" font-size="9" fill="#605E5C" text-anchor="end">+Teams +Endpts</text>
+    </g>
+
+    <g>
+      <rect x="540" y="814" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="630" y="832" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">Adaptive Protection</text>
+      <text x="630" y="846" text-anchor="middle" fill="#605E5C" font-size="9">Risk-driven dynamic DLP</text>
+      <line x1="550" y1="854" x2="710" y2="854" stroke="#E1DFDD"/>
+      <text x="550" y="870" font-size="9" fill="#323130">▸ Insider-risk scoring</text>
+      <text x="550" y="882" font-size="9" fill="#323130">▸ Auto-tightens DLP rules</text>
+      <use href="#pill-na" x="550" y="892" width="32" height="14"/>
+      <text x="588" y="903" font-size="9" fill="#605E5C">N/A</text>
+      <use href="#pill-e5" x="660" y="892" width="32" height="14"/>
+      <text x="700" y="903" font-size="9" fill="#605E5C" text-anchor="end">full</text>
+    </g>
+
+    <g>
+      <rect x="734" y="814" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="824" y="832" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">DSPM for AI</text>
+      <text x="824" y="846" text-anchor="middle" fill="#605E5C" font-size="9">AI-specific data security</text>
+      <line x1="744" y1="854" x2="904" y2="854" stroke="#E1DFDD"/>
+      <text x="744" y="870" font-size="9" fill="#323130">▸ Prompt &amp; response logs</text>
+      <text x="744" y="882" font-size="9" fill="#323130">▸ Risky AI usage detection</text>
+      <use href="#pill-weak" x="744" y="892" width="32" height="14"/>
+      <text x="782" y="903" font-size="9" fill="#605E5C">E3 activity</text>
+      <use href="#pill-e5" x="854" y="892" width="32" height="14"/>
+      <text x="894" y="903" font-size="9" fill="#605E5C" text-anchor="end">+ content</text>
+    </g>
+
+    <g>
+      <rect x="928" y="814" width="170" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="1013" y="832" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">eDiscovery + Audit</text>
+      <text x="1013" y="846" text-anchor="middle" fill="#605E5C" font-size="9">Unified audit log</text>
+      <line x1="938" y1="854" x2="1088" y2="854" stroke="#E1DFDD"/>
+      <text x="938" y="870" font-size="9" fill="#323130">▸ Copilot interactions</text>
+      <text x="938" y="882" font-size="9" fill="#323130">▸ Hold &amp; preservation</text>
+      <use href="#pill-weak" x="938" y="892" width="32" height="14"/>
+      <text x="976" y="903" font-size="9" fill="#605E5C">search only</text>
+      <use href="#pill-e5" x="1048" y="892" width="32" height="14"/>
+      <text x="1088" y="903" font-size="9" fill="#605E5C" text-anchor="end">+ purge</text>
+    </g>
+
+    <!-- Row 2 of Purview -->
+    <g>
+      <rect x="346" y="924" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="436" y="942" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">Comm Compliance</text>
+      <text x="436" y="956" text-anchor="middle" fill="#605E5C" font-size="9">Policy-flagged interactions</text>
+      <line x1="356" y1="964" x2="516" y2="964" stroke="#E1DFDD"/>
+      <text x="356" y="980" font-size="9" fill="#323130">▸ Harassment / IP leak</text>
+      <text x="356" y="992" font-size="9" fill="#323130">▸ Regulatory keywords</text>
+      <use href="#pill-na" x="356" y="1002" width="32" height="14"/>
+      <text x="394" y="1013" font-size="9" fill="#605E5C">N/A</text>
+      <use href="#pill-e5" x="464" y="1002" width="32" height="14"/>
+      <text x="510" y="1013" font-size="9" fill="#605E5C" text-anchor="end">full</text>
+    </g>
+
+    <g>
+      <rect x="540" y="924" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="630" y="942" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">Insider Risk Mgmt</text>
+      <text x="630" y="956" text-anchor="middle" fill="#605E5C" font-size="9">Behavioral analytics</text>
+      <line x1="550" y1="964" x2="710" y2="964" stroke="#E1DFDD"/>
+      <text x="550" y="980" font-size="9" fill="#323130">▸ Risk-score per user</text>
+      <text x="550" y="992" font-size="9" fill="#323130">▸ Feeds Adaptive Protection</text>
+      <use href="#pill-na" x="550" y="1002" width="32" height="14"/>
+      <text x="588" y="1013" font-size="9" fill="#605E5C">N/A</text>
+      <use href="#pill-e5" x="660" y="1002" width="32" height="14"/>
+      <text x="700" y="1013" font-size="9" fill="#605E5C" text-anchor="end">full</text>
+    </g>
+
+    <g>
+      <rect x="734" y="924" width="180" height="100" rx="4" fill="#FFFFFF" stroke="#107C10"/>
+      <text x="824" y="942" text-anchor="middle" fill="#107C10" font-size="11" font-weight="700">Retention &amp; Records</text>
+      <text x="824" y="956" text-anchor="middle" fill="#605E5C" font-size="9">Lifecycle management</text>
+      <line x1="744" y1="964" x2="904" y2="964" stroke="#E1DFDD"/>
+      <text x="744" y="980" font-size="9" fill="#323130">▸ Copilot chat retention</text>
+      <text x="744" y="992" font-size="9" fill="#323130">▸ Preservation Hold</text>
+      <use href="#pill-weak" x="744" y="1002" width="32" height="14"/>
+      <text x="782" y="1013" font-size="9" fill="#605E5C">manual</text>
+      <use href="#pill-e5" x="854" y="1002" width="32" height="14"/>
+      <text x="894" y="1013" font-size="9" fill="#605E5C" text-anchor="end">auto</text>
+    </g>
+
+    <g>
+      <rect x="928" y="924" width="170" height="100" rx="4" fill="#FFFFFF" stroke="#A4262C"/>
+      <text x="1013" y="942" text-anchor="middle" fill="#A4262C" font-size="11" font-weight="700">Security Copilot</text>
+      <text x="1013" y="956" text-anchor="middle" fill="#605E5C" font-size="9">Agentic SOC for AI</text>
+      <line x1="938" y1="964" x2="1088" y2="964" stroke="#E1DFDD"/>
+      <text x="938" y="980" font-size="9" fill="#323130">▸ Threat investigation</text>
+      <text x="938" y="992" font-size="9" fill="#323130">▸ AI-driven response</text>
+      <use href="#pill-na" x="938" y="1002" width="32" height="14"/>
+      <text x="976" y="1013" font-size="9" fill="#605E5C">N/A</text>
+      <use href="#pill-e5" x="1048" y="1002" width="32" height="14"/>
+      <text x="1088" y="1013" font-size="9" fill="#605E5C" text-anchor="end" font-weight="700">bundled</text>
+    </g>
+  </g>
+
+  <!-- ===================================== ROW 9: STORAGE FOR COPILOT ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="332" y="1070" width="780" height="100" rx="6" fill="#FFFFFF" stroke="#0364B8" stroke-width="1.5"/>
+    <rect x="332" y="1070" width="780" height="28" fill="#0364B8"/>
+    <text x="722" y="1088" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="1">▎ COPILOT INTERACTION STORAGE (in-tenant, encrypted at rest)</text>
+
+    <g font-size="10">
+      <text x="356" y="1116" font-weight="700" fill="#323130">Chat history</text>
+      <text x="356" y="1130" fill="#605E5C">Per-user store · users can review &amp; delete</text>
+
+      <text x="356" y="1148" font-weight="700" fill="#323130">Uploaded files</text>
+      <text x="356" y="1162" fill="#605E5C">OneDrive ▸ "Microsoft Copilot Chat Files"</text>
+
+      <text x="630" y="1116" font-weight="700" fill="#323130">Copilot Pages</text>
+      <text x="630" y="1130" fill="#605E5C">SharePoint Embedded · user-owned containers</text>
+
+      <text x="630" y="1148" font-weight="700" fill="#323130">Cloud attachments</text>
+      <text x="630" y="1162" fill="#605E5C">Preservation Hold libraries (under retention)</text>
+
+      <text x="900" y="1116" font-weight="700" fill="#323130">Encryption at rest</text>
+      <text x="900" y="1130" fill="#605E5C">AES-256 · BitLocker · CMK · DKE option</text>
+
+      <text x="900" y="1148" font-weight="700" fill="#323130">Retention</text>
+      <text x="900" y="1162" fill="#605E5C">Per Purview retention policy for Copilot</text>
+    </g>
+  </g>
+
+  <!-- ===================================== ROW 10: BOTTOM PROTOCOL BAR ===================================== -->
+  <g filter="url(#shadow)">
+    <rect x="20" y="1190" width="1400" height="82" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+    <rect x="20" y="1190" width="1400" height="26" fill="#0078D4"/>
+    <text x="720" y="1207" text-anchor="middle" fill="#FFFFFF" font-size="11" font-weight="700" letter-spacing="2">▎ ENFORCED PROTOCOLS · STANDARDS · COMMITMENTS  (tenant-wide, cross-cutting)</text>
+
+    <g font-size="10">
+      <text x="40" y="1232" fill="#005A9E" font-weight="700">⌬ Transport</text>
+      <text x="40" y="1246" fill="#323130">TLS 1.2 / 1.3 · PFS</text>
+      <text x="40" y="1258" fill="#605E5C">cert pinning · MGN</text>
+
+      <text x="180" y="1232" fill="#005A9E" font-weight="700">⌬ At-rest</text>
+      <text x="180" y="1246" fill="#323130">AES-256 · BitLocker</text>
+      <text x="180" y="1258" fill="#605E5C">CMK · DKE</text>
+
+      <text x="320" y="1232" fill="#005A9E" font-weight="700">⌬ Identity</text>
+      <text x="320" y="1246" fill="#323130">Entra · OAuth 2.0</text>
+      <text x="320" y="1258" fill="#605E5C">OIDC · MFA · CA · PRT</text>
+
+      <text x="460" y="1232" fill="#005A9E" font-weight="700">⌬ Authorization</text>
+      <text x="460" y="1246" fill="#323130">Graph ACL gate</text>
+      <text x="460" y="1258" fill="#605E5C">RBAC · ABAC · LP</text>
+
+      <text x="600" y="1232" fill="#005A9E" font-weight="700">⌬ Data Protection</text>
+      <text x="600" y="1246" fill="#323130">Sensitivity Labels</text>
+      <text x="600" y="1258" fill="#605E5C">Azure RMS · DLP</text>
+
+      <text x="740" y="1232" fill="#005A9E" font-weight="700">⌬ AI Safety</text>
+      <text x="740" y="1246" fill="#323130">Content Safety</text>
+      <text x="740" y="1258" fill="#605E5C">Prompt Shields · RAI</text>
+
+      <text x="880" y="1232" fill="#005A9E" font-weight="700">⌬ Audit</text>
+      <text x="880" y="1246" fill="#323130">Unified audit log</text>
+      <text x="880" y="1258" fill="#605E5C">DSPM for AI</text>
+
+      <text x="1020" y="1232" fill="#005A9E" font-weight="700">⌬ Compliance</text>
+      <text x="1020" y="1246" fill="#323130">GDPR · ISO 27001/18</text>
+      <text x="1020" y="1258" fill="#605E5C">SOC 1/2/3 · HIPAA</text>
+
+      <text x="1160" y="1232" fill="#005A9E" font-weight="700">⌬ Residency</text>
+      <text x="1160" y="1246" fill="#323130">EU Data Boundary</text>
+      <text x="1160" y="1258" fill="#605E5C">Tenant-region binding</text>
+
+      <text x="1290" y="1232" fill="#005A9E" font-weight="700">⌬ Training</text>
+      <text x="1290" y="1246" fill="#323130">No customer data</text>
+      <text x="1290" y="1258" fill="#605E5C">No retain · No leak</text>
+    </g>
+  </g>
+
+  <!-- ===================================== EXTERNAL COMPONENTS (RIGHT) ===================================== -->
+  <text x="1272" y="110" text-anchor="middle" fill="#8A6914" font-size="10" font-weight="700" letter-spacing="1">EXTERNAL · OUTSIDE BOUNDARY</text>
+
+  <g filter="url(#shadow)">
+    <rect x="1132" y="120" width="280" height="80" rx="4" fill="#FFFFFF" stroke="#FFB900"/>
+    <rect x="1132" y="120" width="280" height="22" fill="#FFB900"/>
+    <text x="1272" y="135" text-anchor="middle" fill="#201F1E" font-size="10" font-weight="700">Bing API · Bing Index</text>
+    <text x="1272" y="156" text-anchor="middle" fill="#323130" font-size="10">Web grounding (admin-toggle)</text>
+    <text x="1272" y="170" text-anchor="middle" fill="#605E5C" font-size="9">Bing does NOT learn from interaction</text>
+    <text x="1272" y="186" text-anchor="middle" fill="#605E5C" font-size="9">EDP applies to query results</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1132" y="220" width="280" height="80" rx="4" fill="#FFFFFF" stroke="#A19F9D"/>
+    <rect x="1132" y="220" width="280" height="22" fill="#605E5C"/>
+    <text x="1272" y="235" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">Third-Party SaaS</text>
+    <text x="1272" y="256" text-anchor="middle" fill="#323130" font-size="10">Salesforce · ServiceNow · Jira · SAP</text>
+    <text x="1272" y="270" text-anchor="middle" fill="#605E5C" font-size="9">via synced or federated connectors</text>
+    <text x="1272" y="286" text-anchor="middle" fill="#605E5C" font-size="9">OAuth 2.0 · per-source ACL</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1132" y="320" width="280" height="80" rx="4" fill="#FFFFFF" stroke="#605E5C"/>
+    <rect x="1132" y="320" width="280" height="22" fill="#323130"/>
+    <text x="1272" y="335" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">On-Premises Data</text>
+    <text x="1272" y="356" text-anchor="middle" fill="#323130" font-size="10">File shares · SQL · SharePoint Server</text>
+    <text x="1272" y="370" text-anchor="middle" fill="#605E5C" font-size="9">via Microsoft Graph Connector Agent</text>
+    <text x="1272" y="386" text-anchor="middle" fill="#605E5C" font-size="9">Cert auth · outbound HTTPS only</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1132" y="420" width="280" height="80" rx="4" fill="#FFFFFF" stroke="#A4262C"/>
+    <rect x="1132" y="420" width="280" height="22" fill="#A4262C"/>
+    <text x="1272" y="435" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">Plugin Endpoints (3P)</text>
+    <text x="1272" y="456" text-anchor="middle" fill="#323130" font-size="10">REST APIs of plugin developers</text>
+    <text x="1272" y="470" text-anchor="middle" fill="#605E5C" font-size="9">OAuth 2.0 · per-plugin scopes</text>
+    <text x="1272" y="486" text-anchor="middle" fill="#A4262C" font-size="9" font-weight="600">⚠ Highest exfiltration risk surface</text>
+  </g>
+
+  <!-- =========================================================================
+       ARROWS — REQUEST PATH (numbered)
+       ========================================================================= -->
+
+  <!-- 1. Surface → Identity -->
+  <path d="M 290 230 L 332 200" stroke="#0078D4" stroke-width="2.5" fill="none" marker-end="url(#m-prompt)"/>
+  <circle cx="312" cy="216" r="10" fill="#0078D4"/>
+  <text x="312" y="220" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">1</text>
+  <text x="295" y="195" font-size="9" fill="#0078D4" font-weight="600">prompt</text>
+
+  <!-- 2. Identity → Orchestrator -->
+  <path d="M 552 220 L 572 220" stroke="#0078D4" stroke-width="2.5" fill="none" marker-end="url(#m-prompt)"/>
+  <circle cx="562" cy="220" r="10" fill="#0078D4"/>
+  <text x="562" y="224" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">2</text>
+  <text x="555" y="208" font-size="9" fill="#0078D4" font-weight="600">token</text>
+
+  <!-- 3. Orchestrator → Graph (grounding query) -->
+  <path d="M 712 350 L 712 370" stroke="#0078D4" stroke-width="2.5" fill="none" marker-end="url(#m-prompt)"/>
+  <circle cx="712" cy="358" r="10" fill="#0078D4"/>
+  <text x="712" y="362" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">3</text>
+  <text x="725" y="365" font-size="9" fill="#0078D4" font-weight="600">grounding query</text>
+
+  <!-- 4. Orchestrator → Extensibility (parallel grounding) -->
+  <path d="M 712 350 Q 700 460, 700 570" stroke="#E3008C" stroke-width="2" fill="none" stroke-dasharray="4 3" marker-end="url(#m-resp)"/>
+  <circle cx="704" cy="465" r="10" fill="#E3008C"/>
+  <text x="704" y="469" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">4</text>
+
+  <!-- 5. Extensibility → external SaaS / plugin endpoint -->
+  <path d="M 1112 660 L 1132 470" stroke="#E3008C" stroke-width="2" fill="none" stroke-dasharray="5 3" marker-end="url(#m-resp)"/>
+  <circle cx="1122" cy="565" r="10" fill="#E3008C"/>
+  <text x="1122" y="569" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">5</text>
+  <text x="1085" y="555" font-size="9" fill="#E3008C" font-weight="600">OAuth call</text>
+
+  <!-- 6. Graph → Orchestrator (return ACL-filtered context) -->
+  <path d="M 720 370 Q 760 360, 800 350" stroke="#0078D4" stroke-width="2" stroke-dasharray="3 3" fill="none" marker-end="url(#m-prompt)"/>
+  <circle cx="760" cy="356" r="10" fill="#FFFFFF" stroke="#0078D4" stroke-width="2"/>
+  <text x="760" y="360" text-anchor="middle" fill="#0078D4" font-size="10" font-weight="700">6</text>
+  <text x="775" y="345" font-size="9" fill="#0078D4" font-weight="600">ACL-filtered ctx</text>
+
+  <!-- 7. Web grounding (orchestrator → Bing, optional) -->
+  <path d="M 852 200 L 1132 160" stroke="#FFB900" stroke-width="2" fill="none" stroke-dasharray="6 3" marker-end="url(#m-prompt)"/>
+  <circle cx="990" cy="180" r="10" fill="#FFB900"/>
+  <text x="990" y="184" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">7</text>
+  <text x="952" y="170" font-size="9" fill="#8A6914" font-weight="600">opt: web ground</text>
+
+  <!-- 8. Orchestrator → AOAI -->
+  <path d="M 852 220 L 872 220" stroke="#8661C5" stroke-width="2.5" fill="none" marker-end="url(#m-llm)"/>
+  <circle cx="862" cy="220" r="10" fill="#8661C5"/>
+  <text x="862" y="224" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">8</text>
+  <text x="838" y="208" font-size="9" fill="#8661C5" font-weight="600">grounded prompt</text>
+
+  <!-- 9. AOAI → Orchestrator (LLM response) -->
+  <path d="M 872 250 L 852 250" stroke="#8661C5" stroke-width="2.5" stroke-dasharray="3 3" fill="none" marker-end="url(#m-llm)"/>
+  <circle cx="862" cy="250" r="10" fill="#FFFFFF" stroke="#8661C5" stroke-width="2"/>
+  <text x="862" y="254" text-anchor="middle" fill="#8661C5" font-size="10" font-weight="700">9</text>
+  <text x="838" y="270" font-size="9" fill="#8661C5" font-weight="600">inference</text>
+
+  <!-- 10. Orchestrator → Purview (audit / DSPM) -->
+  <path d="M 712 350 Q 480 600, 480 770" stroke="#107C10" stroke-width="1.8" stroke-dasharray="2 3" fill="none" marker-end="url(#m-audit)"/>
+  <circle cx="540" cy="600" r="10" fill="#107C10"/>
+  <text x="540" y="604" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">10</text>
+  <text x="555" y="600" font-size="9" fill="#107C10" font-weight="600">audit + DSPM</text>
+
+  <!-- 11. Graph → Purview (label evaluation telemetry) -->
+  <path d="M 436 538 L 436 770" stroke="#107C10" stroke-width="1.6" stroke-dasharray="2 3" fill="none" marker-end="url(#m-audit)"/>
+  <circle cx="436" cy="650" r="10" fill="#107C10"/>
+  <text x="436" y="654" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">11</text>
+
+  <!-- 12. Extensibility → Purview -->
+  <path d="M 824 738 L 824 770" stroke="#107C10" stroke-width="1.6" stroke-dasharray="2 3" fill="none" marker-end="url(#m-audit)"/>
+  <circle cx="824" cy="754" r="10" fill="#107C10"/>
+  <text x="824" y="758" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">12</text>
+
+  <!-- 13. Response back from Orchestrator → Surface -->
+  <path d="M 572 200 Q 400 100, 220 130" stroke="#E3008C" stroke-width="2.5" stroke-dasharray="6 3" fill="none" marker-end="url(#m-resp)"/>
+  <circle cx="380" cy="118" r="10" fill="#E3008C"/>
+  <text x="380" y="122" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">13</text>
+  <text x="394" y="105" font-size="9" fill="#E3008C" font-weight="600">response (label-inherited, TLS)</text>
+
+  <!-- 14. Orchestrator → Storage (chat history) -->
+  <path d="M 712 350 Q 600 700, 600 1070" stroke="#0364B8" stroke-width="1.6" stroke-dasharray="2 3" fill="none" marker-end="url(#m-prompt)"/>
+  <circle cx="600" cy="900" r="10" fill="#0364B8"/>
+  <text x="600" y="904" text-anchor="middle" fill="#FFFFFF" font-size="10" font-weight="700">14</text>
+
+  <!-- =========================================================================
+       LEGEND BLOCK (bottom right, INSIDE diagram)
+       ========================================================================= -->
+  <g>
+    <rect x="20" y="1290" width="1400" height="170" rx="6" fill="#FFFFFF" stroke="#E1DFDD"/>
+    <text x="40" y="1312" font-size="11" font-weight="700" fill="#323130" letter-spacing="1">▎ DIAGRAM LEGEND</text>
+
+    <!-- arrow types -->
+    <text x="40" y="1338" font-size="10" fill="#605E5C" font-weight="600">ARROW SEMANTICS</text>
+    <line x1="40" y1="1352" x2="120" y2="1352" stroke="#0078D4" stroke-width="2.5" marker-end="url(#m-prompt)"/>
+    <text x="128" y="1356" font-size="11" fill="#323130">Encrypted prompt + grounding (TLS 1.2/1.3, OAuth 2.0)</text>
+
+    <line x1="40" y1="1372" x2="120" y2="1372" stroke="#8661C5" stroke-width="2.5" marker-end="url(#m-llm)"/>
+    <text x="128" y="1376" font-size="11" fill="#323130">LLM inference traffic (in-boundary, dedicated AOAI)</text>
+
+    <line x1="40" y1="1392" x2="120" y2="1392" stroke="#E3008C" stroke-width="2.5" stroke-dasharray="6 3" marker-end="url(#m-resp)"/>
+    <text x="128" y="1396" font-size="11" fill="#323130">Response &amp; extensibility traffic</text>
+
+    <line x1="40" y1="1412" x2="120" y2="1412" stroke="#107C10" stroke-width="1.8" stroke-dasharray="2 3" marker-end="url(#m-audit)"/>
+    <text x="128" y="1416" font-size="11" fill="#323130">Audit / governance telemetry (Purview, DSPM)</text>
+
+    <line x1="40" y1="1432" x2="120" y2="1432" stroke="#FFB900" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#m-prompt)"/>
+    <text x="128" y="1436" font-size="11" fill="#323130">Optional path: Bing web grounding (admin-controlled)</text>
+
+    <!-- pill legend -->
+    <text x="540" y="1338" font-size="10" fill="#605E5C" font-weight="600">LICENSE-TIER STRENGTH PILLS</text>
+    <use href="#pill-e3" x="540" y="1346" width="32" height="14"/>
+    <text x="580" y="1357" font-size="11" fill="#323130">E3 strong — equivalent to E5 for this control</text>
+    <use href="#pill-e5" x="540" y="1366" width="32" height="14"/>
+    <text x="580" y="1377" font-size="11" fill="#323130">E5 strong — full feature, automatic enforcement</text>
+    <use href="#pill-weak" x="540" y="1386" width="32" height="14"/>
+    <text x="580" y="1397" font-size="11" fill="#323130">Weak / partial — manual, narrow scope, search-only</text>
+    <use href="#pill-na" x="540" y="1406" width="32" height="14"/>
+    <text x="580" y="1417" font-size="11" fill="#323130">Not licensed at this SKU — requires upgrade or add-on</text>
+
+    <!-- zone legend -->
+    <text x="980" y="1338" font-size="10" fill="#605E5C" font-weight="600">TRUST ZONES</text>
+    <rect x="980" y="1346" width="32" height="14" fill="#EDEBE9" stroke="#A19F9D"/>
+    <text x="1020" y="1357" font-size="11" fill="#323130">A · Client device — endpoint controls (Intune, MAM, DLP)</text>
+    <rect x="980" y="1366" width="32" height="14" fill="#DEECF9" stroke="#0078D4"/>
+    <text x="1020" y="1377" font-size="11" fill="#323130">B · M365 Service Boundary — EDP, no-train commitments</text>
+    <rect x="980" y="1386" width="32" height="14" fill="#FFF4CE" stroke="#FCE100"/>
+    <text x="1020" y="1397" font-size="11" fill="#323130">C · External — controlled exit only via vetted connectors</text>
+
+    <text x="980" y="1417" font-size="11" fill="#605E5C" font-style="italic">Numbered circles ① – ⑭ map to the 14 primary data flow hops in the pipeline.</text>
+  </g>
+</svg>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-head">▎ How to read this diagram</div>
+    The diagram shows a single conceptual prompt traversing the pipeline. In reality, the orchestrator
+    issues parallel grounding queries — Graph (③), extensibility (④), and optionally Bing (⑦) — and
+    composes their results before calling the LLM (⑧). The red-bordered "Plugin Endpoints" box on the
+    far right is where most enterprise data-loss risk concentrates: this is why E5's App Governance
+    (under Defender for Cloud Apps) is treated as a compensating control, not an upsell.
+  </div>
+</section>
+
+<!-- ============================================================= SURFACES ============================================================= -->
+<section id="surfaces">
+  <span class="s-num">§02 / Entry Points</span>
+  <h2 class="s-title">Client Surfaces — Where the Prompt Is Born</h2>
+  <p class="s-desc">
+    Copilot is not a separate application; it is embedded into existing Microsoft 365 surfaces and
+    inherits each surface's security posture — device compliance, app protection, DLP, conditional
+    access. The surface determines authentication mechanics and local data handling, but every
+    surface converges on the same in-boundary pipeline.<sup class="fn">1</sup>
+  </p>
+
+  <div class="surface-grid">
+    <div class="surface">
+      <div class="surface-icon" style="background:var(--word)">W</div>
+      <h4>Word, Excel, PowerPoint, OneNote</h4>
+      <p>Desktop (Win/Mac) and web. Active document is the implicit grounding context — sent inline, not duplicated to OneDrive.</p>
+      <div class="surface-meta">
+        <span class="pill p-tls">TLS 1.3</span>
+        <span class="pill p-zt">PRT-bound token</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="surface-icon" style="background:var(--outlook)">O</div>
+      <h4>Outlook</h4>
+      <p>Summarize / Draft surfaces. Mailbox content fetched via Graph at prompt-time under user identity.</p>
+      <div class="surface-meta">
+        <span class="pill p-tls">TLS 1.3</span>
+        <span class="pill p-e3">E3 CA + MFA</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="surface-icon" style="background:var(--teams)">T</div>
+      <h4>Microsoft Teams</h4>
+      <p>Pinned BizChat app + meeting recap. Transcripts and chat fetched from Graph; CA evaluated on signal.</p>
+      <div class="surface-meta">
+        <span class="pill p-tls">TLS 1.3</span>
+        <span class="pill p-e5">E5 Endpoint DLP</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="surface-icon" style="background:var(--copilot-purple)">C</div>
+      <h4>m365.cloud · BizChat (web)</h4>
+      <p>Standalone full-screen Copilot Chat. Uploaded files persist to OneDrive's "Microsoft Copilot Chat Files".<sup class="fn">2</sup></p>
+      <div class="surface-meta">
+        <span class="pill p-tls">TLS 1.3</span>
+        <span class="pill p-encrypt">in-tenant only</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="surface-icon" style="background:#605E5C">M</div>
+      <h4>M365 Mobile App (iOS / Android)</h4>
+      <p>App-protected container. Intune MAM prevents data leaving corporate scope — no device-FS persistence when MAM enforced.</p>
+      <div class="surface-meta">
+        <span class="pill p-tls">TLS 1.3</span>
+        <span class="pill p-e3">Intune compliance</span>
+      </div>
+    </div>
+    <div class="surface">
+      <div class="surface-icon" style="background:var(--m365-pink)">P</div>
+      <h4>Plugins / Custom agent host</h4>
+      <p>Per-plugin OAuth 2.0 consent. Highest-risk surface — admin App Governance review essential.</p>
+      <div class="surface-meta">
+        <span class="pill p-weak">E3 weak gov</span>
+        <span class="pill p-e5">E5 App-Gov full</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-head">✓ The convergence principle</div>
+    Every surface — desktop, web, mobile, plugin host — converges on the same orchestrator → Graph
+    → AOAI pipeline once inside the boundary. The strong implication for security teams: you do not
+    need a "Copilot security strategy." You need to harden Microsoft 365 itself, and Copilot inherits
+    that posture by construction.
+  </div>
+</section>
+
+<!-- ============================================================= 22-HOP FLOW ============================================================= -->
+<section id="flow">
+  <span class="s-num">§03 / End-to-End</span>
+  <h2 class="s-title">The 22-Hop Data Flow — Prompt to Response</h2>
+  <p class="s-desc">
+    Microsoft's official architecture documents collapse the data flow into 4–5 narrative steps.<sup class="fn">1, 4</sup>
+    In practice, a single prompt traverses 20+ discrete control points. Below is the expanded walkthrough — every
+    hop annotated with its enforced control and E3-vs-E5 strength.
+  </p>
+
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h4>User keystroke in surface</h4>
+        <p>User types prompt in Word's Copilot pane, Outlook's "Summarize", BizChat, Teams, or mobile. Active document content captured by host app as <em>implicit grounding context</em>.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> App Protection Policy (MAM)</span>
+          <span class="pill p-weak">E3 weak</span>
+          <span class="pill p-e5">E5 + Endpoint DLP</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h4>Conditional Access pre-flight evaluation</h4>
+        <p>Entra ID evaluates user, device compliance, location, sign-in risk, application context. Microsoft publishes an explicit "Protect AI with Conditional Access" template for Copilot.<sup class="fn">1</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Entra Conditional Access + MFA</span>
+          <span class="pill p-e3">E3 strong</span>
+          <span class="pill p-e5">E5 + risk-based (Entra P2)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h4>Token issuance &amp; PRT binding</h4>
+        <p>Entra issues access token bound to device's Primary Refresh Token where supported. MFA enforced if not already satisfied. Token includes user + tenant + scope claims.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> OAuth 2.0 + OpenID Connect, MFA</span>
+          <span class="pill p-zt">Zero Trust</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h4>Encrypted egress over Microsoft Global Network</h4>
+        <p>Prompt + context payload leaves device over TLS 1.2/1.3, enters closest of 150+ MGN peering points, routes to tenant's Copilot regional endpoint.<sup class="fn">5</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> TLS, certificate pinning, MGN routing</span>
+          <span class="pill p-tls">TLS 1.3</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h4>Service boundary entry</h4>
+        <p>Request crosses into Microsoft 365 service boundary — tenant-scoped trust zone subject to M365's contractual security commitments.<sup class="fn">5</sup> Copilot is a "core online service" under Microsoft Product Terms.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> M365 service boundary, EDP contract</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h4>Orchestrator receives the prompt</h4>
+        <p>Copilot Orchestrator — explicitly described by Microsoft as "not an AI but a coordinator" — receives input and begins Retrieval-Augmented Generation.<sup class="fn">5</sup> Plans which knowledge sources, plugins, agents, and skills to invoke.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> System metaprompt, RAI safety filters</span>
+          <span class="pill p-e3">E3 strong (built-in)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <h4>Prompt classification &amp; safety filter (input side)</h4>
+        <p>Azure AI Content Safety + Prompt Shields scan prompt for prompt injection, jailbreak attempts, harmful content, and policy violations <em>before</em> any data fetch begins.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Azure AI Content Safety, Prompt Shields</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <h4>Conversation context &amp; memory recall</h4>
+        <p>Orchestrator retrieves prior turns from user's Copilot chat history (per-user, tenant-scoped). User can review or delete; chats subject to Purview retention.<sup class="fn">1</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Purview retention, eDiscovery</span>
+          <span class="pill p-weak">E3 search only</span>
+          <span class="pill p-e5">E5 search + purge</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <h4>Grounding query → Microsoft Graph</h4>
+        <p>Orchestrator performs hybrid keyword + vector retrieval against Graph index. Critical: query executes <em>in user identity context</em> — Graph enforces ACLs as gatekeeper.<sup class="fn">5, 6</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Identity-based ACL enforcement</span>
+          <span class="pill p-zt">Zero Trust</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <h4>Semantic Index lookup</h4>
+        <p>Per-user vectorized semantic representations of tenant content broaden search beyond exact keyword to conceptual meaning.<sup class="fn">6</sup> Vectors honor user-level permissions; data stays in tenant; not used to train foundation LLMs.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Per-user index, tenant residency</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">11</div>
+      <div class="step-body">
+        <h4>Sensitivity label &amp; encryption check</h4>
+        <p>For every candidate item, Purview sensitivity labels and Azure RMS encryption are evaluated. To use a labeled+encrypted item, user must have <code>EXTRACT</code> + <code>VIEW</code> usage rights.<sup class="fn">7</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Purview Sensitivity Labels + RMS</span>
+          <span class="pill p-weak">E3 manual labels</span>
+          <span class="pill p-e5">E5 auto-label + container</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">12</div>
+      <div class="step-body">
+        <h4>SharePoint / OneDrive oversharing controls</h4>
+        <p>Restricted SharePoint Search (RSS), Restricted Content Discoverability (RCD), Restricted Access Control (RAC), and DAG reports limit which sites surface in Copilot, without changing user permissions.<sup class="fn">7, 8</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> SharePoint Advanced Management (SAM)</span>
+          <span class="pill p-e3">E3 bundled w/ Copilot</span>
+          <span class="pill p-e5">E5 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">13</div>
+      <div class="step-body">
+        <h4>External data — connectors &amp; agents</h4>
+        <p>Synced connectors read from Graph index (ACL-enforced); federated connectors (preview, MCP-based) fetch in real time; agents may call external APIs over OAuth.<sup class="fn">9, 10</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Per-connector ACL, app-governance, OAuth scope review</span>
+          <span class="pill p-weak">E3 limited gov</span>
+          <span class="pill p-e5">E5 full App-Gov</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">14</div>
+      <div class="step-body">
+        <h4>Web grounding (optional, admin-toggled)</h4>
+        <p>If web grounding enabled, orchestrator extracts keywords and queries Bing Index via Bing API.<sup class="fn">5</sup> Bing Index does not learn from this interaction. Admins can disable per tenant or per Copilot.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Web access policy toggle, Bing API isolation</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">15</div>
+      <div class="step-body">
+        <h4>Grounding payload assembly</h4>
+        <p>Orchestrator assembles the <em>grounded prompt</em>: original user prompt + retrieved Graph snippets + connector results + web results + system metaprompt + RAI guardrails.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Metaprompt injection, RAI grounding rules</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">16</div>
+      <div class="step-body">
+        <h4>Inference call → Azure OpenAI (M365-dedicated)</h4>
+        <p>Grounded prompt sent to Azure OpenAI Service instance <em>exclusively reserved for Microsoft 365</em> and inside the M365 service boundary.<sup class="fn">5</sup> Microsoft does not train foundation LLMs on customer data; AOAI does not retain customer data.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Dedicated AOAI, no-train, EU Data Boundary</span>
+          <span class="pill p-e3">E3 contractual EDP</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">17</div>
+      <div class="step-body">
+        <h4>LLM generation</h4>
+        <p>Foundation model (default GPT-4 family; Anthropic Claude opt-in for some Cowork &amp; Studio agents under same EDP commitments) generates response from grounded prompt.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Inference within service boundary</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">18</div>
+      <div class="step-body">
+        <h4>Output safety filter (response side)</h4>
+        <p>Generated response screened by Azure AI Content Safety for harmful content, hallucinated PII, prompt-injection-induced exfiltration, grounding consistency.</p>
+        <div class="step-meta">
+          <span><b>Control:</b> Azure AI Content Safety output filter</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">19</div>
+      <div class="step-body">
+        <h4>Sensitivity-label inheritance</h4>
+        <p>If new content was generated from labeled sources, highest-priority sensitivity label inherited automatically (where supported), and protection settings are enforced even when file is later moved outside the tenant.<sup class="fn">7</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Purview label inheritance</span>
+          <span class="pill p-weak">E3 manual</span>
+          <span class="pill p-e5">E5 automatic</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">20</div>
+      <div class="step-body">
+        <h4>Audit + DSPM for AI logging</h4>
+        <p>Prompt, response, referenced content, metadata written to unified audit log and surfaced in Purview <strong>DSPM for AI</strong> dashboards. E5 unlocks full prompt+response visibility; E3 sees activity only.<sup class="fn">8, 11</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Purview Audit + DSPM for AI</span>
+          <span class="pill p-weak">E3 activity only</span>
+          <span class="pill p-e5">E5 full content view</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">21</div>
+      <div class="step-body">
+        <h4>DLP &amp; Insider-Risk evaluation</h4>
+        <p>Outbound response checked against DLP policies. On E5, Adaptive Protection from Insider Risk Management can dynamically tighten DLP based on risk score. Communication Compliance can flag risky Copilot interactions.<sup class="fn">8</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> Purview DLP + Adaptive Protection</span>
+          <span class="pill p-weak">E3 SP/Exch/OD only</span>
+          <span class="pill p-e5">E5 +Teams +Endpts +Adaptive</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">22</div>
+      <div class="step-body">
+        <h4>Encrypted return + render</h4>
+        <p>Response travels back over TLS 1.2/1.3 to originating surface and renders inline. Copilot Pages content stored in user-owned SharePoint Embedded containers; uploaded files persist in OneDrive's "Microsoft Copilot Chat Files".<sup class="fn">7</sup></p>
+        <div class="step-meta">
+          <span><b>Control:</b> TLS, Preservation Hold, retention</span>
+          <span class="pill p-tls">TLS 1.3</span>
+          <span class="pill p-e3">E3 strong</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================================================= IDENTITY ============================================================= -->
+<section id="identity">
+  <span class="s-num">§04 / Layer 2</span>
+  <h2 class="s-title">Identity, Auth &amp; Conditional Access</h2>
+  <p class="s-desc">
+    Copilot inherits Microsoft 365 identity. There is no Copilot-specific authentication. The same
+    Entra ID account, MFA configuration, and Conditional Access policies that gate access to Outlook
+    or SharePoint also gate Copilot.<sup class="fn">1</sup>
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-h">Auth Stack</div>
+      <h3>OAuth 2.0 + OpenID Connect</h3>
+      <ul>
+        <li>Tokens issued by Entra ID, bound to device PRT where supported.</li>
+        <li>Token includes user object ID, tenant ID, scopes (Files.Read.All, Mail.Read, etc.) — Graph evaluates these per call.</li>
+        <li>Service-to-service hops (orchestrator → Graph → AOAI) use signed managed-identity tokens, not the user token directly.</li>
+      </ul>
+      <p style="margin-top:8px"><span class="pill p-e3">E3 strong</span><span class="pill p-e5">E5 strong</span></p>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Conditional Access</div>
+      <h3>Policy-driven gating</h3>
+      <ul>
+        <li>Standard CA policies (user, device, location, app) work on Copilot identically.</li>
+        <li>Microsoft Learn ships an explicit "Protect AI with Conditional Access" template.</li>
+        <li>E5 unlocks <strong>risk-based</strong> CA via Entra ID Protection P2 (sign-in risk, user risk).</li>
+      </ul>
+      <p style="margin-top:8px"><span class="pill p-e3">E3 CA</span><span class="pill p-e5">E5 + risk</span></p>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Multi-Factor Auth</div>
+      <h3>Phishing-resistant by preference</h3>
+      <ul>
+        <li>Copilot uses tenant's existing MFA — security defaults, per-user MFA, or CA-driven.</li>
+        <li>Microsoft recommends MFA enabled. With security defaults, MFA on by default.</li>
+        <li>FIDO2, Windows Hello, Authenticator app, certificate-based auth all supported.</li>
+      </ul>
+      <p style="margin-top:8px"><span class="pill p-e3">E3 strong</span><span class="pill p-e5">E5 strong</span></p>
+    </div>
+
+    <div class="card">
+      <div class="card-h">Device &amp; App Posture</div>
+      <h3>Intune compliance + MAM</h3>
+      <ul>
+        <li>Device compliance feeds CA — non-compliant device blocks Copilot.</li>
+        <li>App protection (MAM) wraps Copilot in mobile to prevent data leaving corporate container.</li>
+        <li>Endpoint DLP (E5) blocks copy/paste/save of Copilot output containing labeled data.</li>
+      </ul>
+      <p style="margin-top:8px"><span class="pill p-weak">E3 compliance only</span><span class="pill p-e5">E5 + Endpoint DLP</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= ORCHESTRATOR ============================================================= -->
+<section id="orchestrator">
+  <span class="s-num">§05 / Layer 3</span>
+  <h2 class="s-title">Orchestrator, Grounding &amp; RAG</h2>
+  <p class="s-desc">
+    The Copilot Orchestrator is the brain of the system — but as Microsoft is careful to point out,
+    it is <em>not itself an AI</em>; it is a deterministic coordinator that plans, dispatches, and
+    composes calls across LLMs, the Graph, plugins, and agents.<sup class="fn">5</sup> It runs the
+    Retrieval-Augmented Generation (RAG) pipeline.
+  </p>
+
+  <div class="card">
+    <div class="card-h">What it does</div>
+    <h3>Per-prompt orchestrator workflow</h3>
+    <ol style="padding-left:24px;color:var(--grey-90);font-size:13.5px">
+      <li style="margin-bottom:6px">Receives prompt + active-document context from the surface.</li>
+      <li style="margin-bottom:6px">Runs system metaprompt + RAI guardrails through Azure AI Content Safety (input filter).</li>
+      <li style="margin-bottom:6px">Decides which knowledge sources to query (Graph, Semantic Index, web, plugins, agents).</li>
+      <li style="margin-bottom:6px">Issues parallel grounding queries — Graph search executes <em>as the user</em>, so ACLs are enforced at the index level.</li>
+      <li style="margin-bottom:6px">Assembles the grounded prompt: user prompt + retrieved snippets + plugin outputs + system metaprompt.</li>
+      <li style="margin-bottom:6px">Dispatches to the LLM (default: GPT-4 family in M365-dedicated AOAI; Anthropic Claude opt-in for some agents).</li>
+      <li style="margin-bottom:6px">Runs output through Content Safety again, applies sensitivity-label inheritance, returns to surface.</li>
+      <li>Writes prompt + response + reference list to unified audit log and DSPM for AI.</li>
+    </ol>
+  </div>
+
+  <div class="callout">
+    <div class="callout-head">▎ Hybrid retrieval</div>
+    The orchestrator's Graph query is hybrid — combining traditional keyword/lexical search with vector
+    (semantic) search.<sup class="fn">6</sup> This is plain RAG, not fine-tuning. Your tenant data is the
+    <em>ingredients</em>, never the <em>recipe</em>.
+  </div>
+</section>
+
+<!-- ============================================================= GRAPH ============================================================= -->
+<section id="graph">
+  <span class="s-num">§06 / Layer 4</span>
+  <h2 class="s-title">Microsoft Graph &amp; Semantic Index</h2>
+  <p class="s-desc">
+    The Graph is the gatekeeper. Microsoft's exact framing:
+    "<em>The large language model can't decide to access content the user doesn't have access to,
+    as it's constrained by the same mechanism that constrains the user in other scenarios outside
+    of Copilot.</em>"<sup class="fn">5</sup>
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-h">Microsoft Graph</div>
+      <h3>Identity-bound search index</h3>
+      <ul>
+        <li>Indexes SharePoint, OneDrive, Exchange, Teams, Loop, Planner, Yammer/Engage, plus external connector content.</li>
+        <li>Honors per-user ACLs at the index level — Copilot's query result is pre-filtered to what the user can see.</li>
+        <li>Backs Microsoft Search, profile cards, and Copilot uniformly.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-h">Semantic Index for Copilot</div>
+      <h3>Per-user vector embeddings</h3>
+      <ul>
+        <li>Vectorizes tenant content for conceptual similarity rather than keyword match.</li>
+        <li>Built per-user; respects existing permissions; does not affect storage quotas.</li>
+        <li>Vectors stay in tenant; not used to train any foundation LLM.<sup class="fn">6</sup></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-head">⚠ The oversharing problem</div>
+    Because the Graph faithfully enforces ACLs, Copilot will surface <em>everything</em> the user is
+    technically permitted to see — including content they were never expected to discover (legacy
+    "Everyone except External" sites, mis-shared HR drives, abandoned Teams). SharePoint Advanced
+    Management's RSS / RAC / RCD policies and Purview sensitivity labels are how you fix this without
+    revoking permissions.
+    <span class="pill p-e3">SAM E3 bundled</span>
+    <span class="pill p-weak">labels E3 manual</span>
+    <span class="pill p-e5">labels E5 auto</span>
+  </div>
+</section>
+
+<!-- ============================================================= EXTENSIBILITY ============================================================= -->
+<section id="extensibility">
+  <span class="s-num">§07 / Extensibility</span>
+  <h2 class="s-title">Plugins, Agents &amp; Connectors — the Boundary-Crossers</h2>
+  <p class="s-desc">
+    The highest-risk surface in the entire architecture. Plugins, agents, and connectors are what let
+    Copilot reach beyond Microsoft 365 — and therefore what can let your data reach beyond it
+    too.<sup class="fn">9, 10, 12</sup>
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Direction</th>
+          <th>Auth</th>
+          <th>Indexed?</th>
+          <th>Crosses Boundary?</th>
+          <th>License Strength</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Synced connector</td>
+          <td>One-way (read external → Graph)</td>
+          <td>App registration + admin consent (Graph perms)</td>
+          <td>Yes — into Microsoft Graph index, with ACL</td>
+          <td>Source data → in. Copilot data → does not exit.</td>
+          <td><span class="pill p-e3">E3</span><span class="pill p-e5">E5</span></td>
+        </tr>
+        <tr>
+          <td>Federated connector (preview, MCP)</td>
+          <td>Real-time read</td>
+          <td>OAuth 2.0; admin-managed</td>
+          <td>No (real-time fetch)</td>
+          <td>Query crosses to source; results return.</td>
+          <td><span class="pill p-weak">E3 weak gov</span><span class="pill p-e5">E5 + App-Gov</span></td>
+        </tr>
+        <tr>
+          <td>Plugin / API plugin</td>
+          <td>Two-way (read &amp; write)</td>
+          <td>Per-plugin OAuth, user-consented unless admin-blocked</td>
+          <td>No</td>
+          <td>Yes — prompt fragment can leave to plugin endpoint</td>
+          <td><span class="pill p-weak">E3 weak</span><span class="pill p-e5">E5 (DCA + AppGov)</span></td>
+        </tr>
+        <tr>
+          <td>Declarative agent (Copilot Studio)</td>
+          <td>Read + tool use</td>
+          <td>Inherits user identity; tools use connectors with own auth</td>
+          <td>Tied to its grounding sources</td>
+          <td>Depends on connectors used</td>
+          <td><span class="pill p-weak">E3 weak</span><span class="pill p-e5">E5 strong</span></td>
+        </tr>
+        <tr>
+          <td>Custom engine agent (Semantic Kernel)</td>
+          <td>Full code-driven</td>
+          <td>Developer-defined</td>
+          <td>No (unless explicitly indexed)</td>
+          <td>Likely yes</td>
+          <td><span class="pill p-weak">E3 weak</span><span class="pill p-e5">E5 strong</span></td>
+        </tr>
+        <tr>
+          <td>Graph Connector Agent (on-prem)</td>
+          <td>One-way (on-prem → Graph)</td>
+          <td>Service principal + cert</td>
+          <td>Yes</td>
+          <td>Source → in only</td>
+          <td><span class="pill p-e3">E3</span><span class="pill p-e5">E5</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger">
+    <div class="callout-head">⚠ Prompt-injection via custom action</div>
+    Microsoft itself flags this risk: <em>"if a custom action can provide data from untrusted sources
+    (such as emails or support tickets), an attacker might be able to craft a message payload that
+    causes your agent to behave in a way that the attacker controls."</em><sup class="fn">12</sup>
+    This is why E5's Defender for Cloud Apps + App Governance is a substantive uplift — not a
+    nice-to-have, a compensating control.
+  </div>
+</section>
+
+<!-- ============================================================= LLM ============================================================= -->
+<section id="llm">
+  <span class="s-num">§08 / Layer 5</span>
+  <h2 class="s-title">Azure OpenAI &amp; the LLM Boundary</h2>
+  <p class="s-desc">
+    The LLM is hosted in an Azure OpenAI Service instance <em>exclusively reserved for Microsoft 365
+    and inside the Microsoft 365 service boundary</em>.<sup class="fn">5</sup> This is the single most
+    misunderstood part of the architecture.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-h">Where the model runs</div>
+      <h3>Inside the M365 service boundary</h3>
+      <p>It is not OpenAI's infrastructure. It is not the public Azure OpenAI tenant your dev team uses.
+      It is a dedicated, contractually segregated AOAI instance under Microsoft Product Terms.</p>
+      <p>Microsoft's contractual commitments: no training of foundation LLMs on customer data; AOAI does not retain customer data; EU Data Boundary applies.</p>
+    </div>
+    <div class="card">
+      <div class="card-h">Which models</div>
+      <h3>GPT-4 family + Anthropic Claude (opt-in)</h3>
+      <p>Default models for most Copilot features are GPT-4 / GPT-4o variants. Anthropic Claude available as a subprocessor under same Microsoft Enterprise data protections — Microsoft has formally onboarded Anthropic as a subprocessor for Microsoft Online Services.<sup class="fn">3</sup></p>
+      <p>If your tenant uses Cowork or custom Studio agents that select Claude, the grounded prompt is sent to Anthropic's infrastructure under those EDP commitments.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-head">▎ What never reaches the LLM</div>
+    The raw Graph index does not. The semantic vectors do not. The user's full mailbox does not.
+    Only the <em>grounded prompt</em> — selected snippets retrieved by the orchestrator under user-context
+    ACLs — reaches the model. This is the architectural reason the boundary holds: even a fully-jailbroken
+    LLM cannot exfiltrate what the orchestrator never gave it.
+  </div>
+</section>
+
+<!-- ============================================================= PURVIEW ============================================================= -->
+<section id="purview">
+  <span class="s-num">§09 / Layer 6</span>
+  <h2 class="s-title">Purview, DLP, Labels &amp; DSPM for AI</h2>
+  <p class="s-desc">
+    Microsoft Purview is the governance plane. This is also where the <strong>biggest E3-vs-E5 delta</strong>
+    in the entire stack lives — every row of Microsoft's official comparison table tilts in E5's
+    favor.<sup class="fn">8</sup>
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Capability</th><th>E3</th><th>E5</th><th>Why it matters for Copilot</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Sensitivity Labels</td>
+          <td><span class="pill p-weak">manual labels</span></td>
+          <td><span class="pill p-e5">+auto-labeling +containers +defaults</span></td>
+          <td>Auto-labeling lets E5 tenants enforce protection on legacy / un-labeled docs that Copilot might surface; E3 can only label what users remember to label.</td>
+        </tr>
+        <tr>
+          <td>Data Loss Prevention</td>
+          <td><span class="pill p-weak">SP / Exch / OneDrive</span></td>
+          <td><span class="pill p-e5">+ Teams + Endpoints</span></td>
+          <td>E3 can't stop a user pasting a Copilot answer into Teams chat or copying it to a USB stick. E5 can.</td>
+        </tr>
+        <tr>
+          <td>Adaptive Protection</td>
+          <td><span class="pill p-na">N/A</span></td>
+          <td><span class="pill p-e5">full</span></td>
+          <td>Risk-driven dynamic DLP — high-risk users get tighter rules automatically. E5-only.</td>
+        </tr>
+        <tr>
+          <td>Communication Compliance</td>
+          <td><span class="pill p-na">N/A</span></td>
+          <td><span class="pill p-e5">full</span></td>
+          <td>Flag risky Copilot prompts (harassment, IP leak, regulatory keywords). E5-only.</td>
+        </tr>
+        <tr>
+          <td>Data Lifecycle / Records Mgmt</td>
+          <td><span class="pill p-weak">manual retention</span></td>
+          <td><span class="pill p-e5">+auto-retention +Activity explorer +Records Mgmt</span></td>
+          <td>Copilot interactions subject to retention; only E5 can auto-classify them.</td>
+        </tr>
+        <tr>
+          <td>eDiscovery</td>
+          <td><span class="pill p-weak">search only</span></td>
+          <td><span class="pill p-e5">search + delete</span></td>
+          <td>Both can find Copilot prompts/responses in audit; only E5 can purge them.</td>
+        </tr>
+        <tr>
+          <td>DSPM for AI</td>
+          <td><span class="pill p-weak">activity / app info / export</span></td>
+          <td><span class="pill p-e5">+ view prompt &amp; response content</span></td>
+          <td>E3 admins see <em>that</em> a Copilot interaction happened; E5 admins see <em>what</em> was said.</td>
+        </tr>
+        <tr>
+          <td>Insider Risk Management</td>
+          <td><span class="pill p-na">N/A</span></td>
+          <td><span class="pill p-e5">full</span></td>
+          <td>Detect anomalous Copilot usage as part of insider-risk indicators. E5-only.</td>
+        </tr>
+        <tr>
+          <td>Security Copilot integration</td>
+          <td><span class="pill p-na">N/A</span></td>
+          <td><span class="pill p-e5">included (2026)</span></td>
+          <td>Agentic SOC capability for investigating Copilot-related incidents. Bundled with E5.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================= CRYPTO ============================================================= -->
+<section id="crypto">
+  <span class="s-num">§10 / Cryptography</span>
+  <h2 class="s-title">Encryption, Protocols &amp; the EU Data Boundary</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-h">In transit</div>
+      <h3>TLS 1.2 / 1.3 everywhere</h3>
+      <ul>
+        <li>Client → MGN: TLS 1.2/1.3, Perfect Forward Secrecy.</li>
+        <li>Service-to-service inside boundary: mTLS + managed-identity tokens.</li>
+        <li>Bing API for web grounding: TLS 1.3.</li>
+        <li>Plugin/agent calls: per-plugin TLS, OAuth 2.0 bearer.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-h">At rest</div>
+      <h3>Layered envelope encryption</h3>
+      <ul>
+        <li>Default: Microsoft service-managed keys, AES-256, BitLocker volume encryption.</li>
+        <li>Customer Key (CMK) — bring-your-own-key option for SharePoint, Exchange, OneDrive.</li>
+        <li>Double Key Encryption (DKE) — for the most sensitive content; Copilot will respect DKE-encrypted documents (cannot read them without user keys).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-h">Data residency</div>
+      <h3>EU Data Boundary &amp; tenant region</h3>
+      <ul>
+        <li>Customer + pseudonymous personal data stays within EU Data Boundary for EU tenants.</li>
+        <li>Copilot interaction data follows tenant's primary region.</li>
+        <li>Multi-Geo capable for E3 + E5 customers using Multi-Geo SKU.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-h">Compliance attestations</div>
+      <h3>Inherited from M365 core</h3>
+      <ul>
+        <li>ISO 27001 / 27017 / 27018 / 27701</li>
+        <li>SOC 1, SOC 2 Type II, SOC 3</li>
+        <li>HIPAA, FedRAMP High (GCC, GCC-High, DoD)</li>
+        <li>GDPR, EU Data Boundary, C5, IRAP (ASD Blueprint alignment)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= E3 vs E5 ============================================================= -->
+<section id="e3e5">
+  <span class="s-num">§11 / Matrix</span>
+  <h2 class="s-title">Consolidated E3 vs E5 Capability Matrix</h2>
+  <p class="s-desc">
+    Single reference. Same content scattered across Microsoft's licensing pages, Copilot Control
+    System docs, and Purview service descriptions, brought into one place and annotated with where
+    it sits on the Copilot data flow.<sup class="fn">8</sup>
+  </p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr><th>Layer / Hop</th><th>Control</th><th>E3</th><th>E5</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Surface (1)</td><td>App Protection (MAM)</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Surface (1)</td><td>Endpoint DLP</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Identity (2-3)</td><td>Conditional Access (basic)</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Identity (2-3)</td><td>Risk-based CA (Entra P2)</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Identity (2-3)</td><td>MFA</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Transport (4)</td><td>TLS 1.2/1.3, MGN</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Boundary (5)</td><td>EDP contract</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Orchestrator (6-7)</td><td>RAI / Content Safety</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Graph (9)</td><td>Identity-bound ACL</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Semantic Index (10)</td><td>Per-user vectors</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Labels (11, 19)</td><td>Sensitivity labels — manual</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Labels (11, 19)</td><td>Auto-labeling / containers</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Oversharing (12)</td><td>SharePoint Advanced Mgmt</td><td><span class="pill p-e3">bundled w/ Copilot</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Connectors (13)</td><td>Per-connector ACL</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Connectors (13)</td><td>App Governance / DCA</td><td><span class="pill p-weak">weak</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Web grounding (14)</td><td>Bing API isolation</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>LLM (16-17)</td><td>Dedicated AOAI / EDP</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Audit (20)</td><td>Unified audit log</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Audit (20)</td><td>DSPM for AI — content view</td><td><span class="pill p-weak">activity only</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>DLP (21)</td><td>DLP — SP/Exch/OneDrive</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>DLP (21)</td><td>DLP — Teams + Endpoints</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>DLP (21)</td><td>Adaptive Protection</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Governance</td><td>Communication Compliance</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Governance</td><td>Insider Risk Management</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Governance</td><td>eDiscovery — search</td><td><span class="pill p-e3">strong</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Governance</td><td>eDiscovery — purge</td><td><span class="pill p-weak">weak</span></td><td><span class="pill p-e5">strong</span></td></tr>
+        <tr><td>Response</td><td>Security Copilot for SOC</td><td><span class="pill p-na">N/A</span></td><td><span class="pill p-e5">bundled (2026)</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================= THREATS ============================================================= -->
+<section id="threats">
+  <span class="s-num">§12 / Threats</span>
+  <h2 class="s-title">Threats, Mitigations &amp; Hardening Priorities</h2>
+  <p class="s-desc">
+    The honest threat model. None of these are theoretical — Microsoft itself documents each in its
+    deployment blueprints and the Anthropic-as-subprocessor disclosure.
+  </p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-h">Threat 01</div>
+      <h3>Oversharing-driven exposure</h3>
+      <p>Copilot honors permissions you set <em>incorrectly</em>. The most common Copilot incident is not
+      a model failure — it's a 2018 SharePoint site shared with "Everyone except external users"
+      suddenly being summarized in a Copilot answer to a junior employee.</p>
+      <p><strong>Mitigation:</strong> SAM (RSS, RAC, RCD), DAG reports, sensitivity-label auto-application.</p>
+      <p><span class="pill p-weak">E3 partial</span><span class="pill p-e5">E5 full</span></p>
+    </div>
+    <div class="card">
+      <div class="card-h">Threat 02</div>
+      <h3>Prompt injection via untrusted content</h3>
+      <p>Attacker emails the user a document with hidden instructions. User asks Copilot to summarize
+      their inbox. Copilot reads the doc, executes the injected instructions, exfiltrates via plugin call.</p>
+      <p><strong>Mitigation:</strong> Prompt Shields, App Governance over plugins, restrict agents to vetted
+      connectors, treat email/ticket data as untrusted in custom actions.<sup class="fn">12</sup></p>
+    </div>
+    <div class="card">
+      <div class="card-h">Threat 03</div>
+      <h3>Plugin / agent data exfiltration</h3>
+      <p>A user-consented plugin pipes prompt fragments to a third-party SaaS outside the boundary.
+      Once consent is granted, every subsequent Copilot interaction that triggers the plugin leaks.</p>
+      <p><strong>Mitigation:</strong> Disable user consent for non-verified plugins, App Governance (E5),
+      audit OAuth grants quarterly.</p>
+    </div>
+    <div class="card">
+      <div class="card-h">Threat 04</div>
+      <h3>Sensitive data in prompts</h3>
+      <p>User pastes a confidential M&amp;A draft into BizChat to "make it sound better." The draft is now
+      in the user's chat history and OneDrive Copilot Chat folder.</p>
+      <p><strong>Mitigation:</strong> DLP policies on prompts (E5 endpoint DLP), Adaptive Protection, user
+      training, Comm Compliance flagging.</p>
+    </div>
+    <div class="card">
+      <div class="card-h">Threat 05</div>
+      <h3>Compromised identity</h3>
+      <p>Adversary phishes a privileged user. Once they have the session, Copilot will dutifully retrieve
+      everything that user can see — at machine speed.</p>
+      <p><strong>Mitigation:</strong> Phishing-resistant MFA (FIDO2), Entra ID Protection P2 risk-based CA,
+      Privileged Identity Management for admin scopes.</p>
+    </div>
+    <div class="card">
+      <div class="card-h">Threat 06</div>
+      <h3>Sensitivity-label inheritance gaps</h3>
+      <p>Copilot generates new content from labeled sources, but the destination format doesn't support
+      inheritance, or user manually downgrades the label.</p>
+      <p><strong>Mitigation:</strong> Auto-labeling at rest (E5), restrict label downgrade with
+      justification, monitor label-change events in audit.</p>
+    </div>
+  </div>
+
+  <div class="callout success">
+    <div class="callout-head">✓ The 80/20 hardening priority</div>
+    For any organization deploying Copilot at scale: (1) fix oversharing with SAM + sensitivity labels,
+    (2) enforce phishing-resistant MFA + risk-based CA, (3) lock plugin/agent governance via App
+    Governance, (4) turn on DSPM for AI and review weekly, (5) write retention policies that
+    explicitly cover Copilot interactions. Everything else is decoration on top of these five.
+  </div>
+</section>
+
+<!-- ============================================================= REFS ============================================================= -->
+<section id="refs" class="cites">
+  <h2>References — Microsoft Learn Sources</h2>
+  <ol>
+    <li>[1] <em>How does Microsoft 365 Copilot work? — Architecture &amp; data flow.</em>
+      <a href="https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-architecture">learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-architecture</a></li>
+    <li>[2] <em>Microsoft 365 Copilot — Architecture &amp; how it works (alternate path).</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-overview">learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-overview</a></li>
+    <li>[3] <em>Anthropic as a subprocessor for Microsoft Online Services.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-overview">learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-overview</a></li>
+    <li>[4] <em>How data is protected and audited in Microsoft 365 and Microsoft 365 Copilot.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-architecture-data-protection-auditing">learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-architecture-data-protection-auditing</a></li>
+    <li>[5] <em>Service components for Copilot aligning to ASD Blueprint</em> — most explicit MGN, service-boundary, AOAI, RAG description.
+      <a href="https://learn.microsoft.com/en-us/compliance/anz/blueprint-copilot-servicecom">learn.microsoft.com/en-us/compliance/anz/blueprint-copilot-servicecom</a></li>
+    <li>[6] <em>Semantic indexing for Microsoft 365 Copilot.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoftsearch/semantic-index-for-copilot">learn.microsoft.com/en-us/microsoftsearch/semantic-index-for-copilot</a></li>
+    <li>[7] <em>Microsoft 365 Copilot data protection architecture (sensitivity labels, encryption, oversharing controls, audit).</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-architecture-data-protection-auditing">learn.microsoft.com/en-us/microsoft-365/copilot/microsoft-365-copilot-architecture-data-protection-auditing</a></li>
+    <li>[8] <em>Compare Microsoft 365 Copilot features in E3 and E5 licenses</em> — canonical Purview, SAM, Security Copilot E3-vs-E5 table.
+      <a href="https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-license-feature-overview">learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-license-feature-overview</a></li>
+    <li>[9] <em>Microsoft 365 Copilot connectors overview — synced vs federated.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/connectors/overview">learn.microsoft.com/en-us/microsoft-365/copilot/connectors/overview</a></li>
+    <li>[10] <em>Agents, Actions, and Connectors in the Microsoft 365 Ecosystem.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/ecosystem">learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/ecosystem</a></li>
+    <li>[11] <em>Security for Microsoft 365 Copilot</em> — defense-in-depth + EDP overview.
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/security-microsoft-365-copilot">learn.microsoft.com/en-us/microsoft-365/copilot/security-microsoft-365-copilot</a></li>
+    <li>[12] <em>Data, Privacy, and Security and Microsoft 365 Copilot Extensibility</em> — explicit prompt-injection threat statement.
+      <a href="https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/data-privacy-security">learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/data-privacy-security</a></li>
+    <li>[13] <em>How the Microsoft 365 Copilot Orchestrator Chooses Actions.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/orchestrator">learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/orchestrator</a></li>
+    <li>[14] <em>Apply principles of Zero Trust to Microsoft 365 Copilot.</em>
+      <a href="https://learn.microsoft.com/en-us/security/zero-trust/copilots/zero-trust-microsoft-365-copilot">learn.microsoft.com/en-us/security/zero-trust/copilots/zero-trust-microsoft-365-copilot</a></li>
+    <li>[15] <em>Secure &amp; governed data foundation for Microsoft 365 Copilot — deployment blueprint.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/secure-govern-copilot-foundational-deployment-guidance">learn.microsoft.com/en-us/microsoft-365/copilot/secure-govern-copilot-foundational-deployment-guidance</a></li>
+    <li>[16] <em>Microsoft Graph connector agent overview.</em>
+      <a href="https://learn.microsoft.com/en-us/microsoft-365/copilot/connectors/connector-agent">learn.microsoft.com/en-us/microsoft-365/copilot/connectors/connector-agent</a></li>
+    <li>[17] <em>License options for Microsoft 365 Copilot.</em>
+      <a href="https://learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-licensing">learn.microsoft.com/en-us/copilot/microsoft-365/microsoft-365-copilot-licensing</a></li>
+    <li>[18] <em>Microsoft Purview — DSPM for AI service description.</em>
+      <a href="https://learn.microsoft.com/en-us/purview/dspm-for-ai">learn.microsoft.com/en-us/purview/dspm-for-ai</a></li>
+  </ol>
+</section>
+
+<div class="foot">
+  Document compiled May 2026 from Microsoft Learn primary sources. License-tier annotations reflect the canonical E3-vs-E5 comparison page. <br>
+  Provided for technical reference; not a substitute for Microsoft Product Terms or formal compliance advice.
+</div>
+
+</div>
+
+</body>
+</html>
